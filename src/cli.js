@@ -15,8 +15,19 @@ The pipeline (fixed code, no model, 0 tokens)
   run [url] [--shotlist <file>]   start or find the app, record every scene, cut, export, stop the app again
   resume [--skip 3,4]             continue a paused run: records only the failed and remaining scenes
   cancel                          end a paused run, stop the app if Pushreel started it, keep scenes and shot list
-  rerender                        cut and export again from the recorded footage (captions, lengths, scenes, targets)
+  rerender                        cut and export again from the recorded footage (captions, lengths, scenes, targets, style)
   status [--json]                 what state the run is in and what to do next
+    run, rerender and validate-shotlist also take --style <name> (for this run only), --template <name> and
+    --no-project-style (leave pushreel.style.json out, to try a style on its own)
+
+Your brand, every run (docs/STYLES.md)
+  style init [url] [--force]      read the brand colour, main font and logo of your running app, write pushreel.style.json
+  style list                      the built-in styles, your library (~/.pushreel/styles) and the project file
+  style show [name] [--json]      the style a run uses, every value with where it comes from; or one named style
+  style set <key=value> …         change values in pushreel.style.json, e.g. captions.background=#0e0a1f
+  style unset <key> …             remove values from pushreel.style.json (the base style's value applies again)
+  template list                   the story templates: launch, feature, changelog and yours (~/.pushreel/templates)
+  template show <name>            the slots and rules of a template, as the agent gets them
 
 Login for apps without a password form (OAuth, magic links, SSO): a saved browser session
   login [url]                     opens a visible browser window on your app; sign in by hand, then press Enter or close
@@ -25,7 +36,9 @@ Login for apps without a password form (OAuth, magic links, SSO): a saved browse
   logout                          removes the saved session
 
 Tools the agent uses while exploring
-  begin [url] [--session <id>] [--yes]     one call for the start of a run: doctor, cost tracking, model note, find the app
+  begin [url] [--session <id>] [--yes] [--style <name>] [--template <name>]
+                                           one call for the start of a run: doctor, cost tracking, model note, find the app,
+                                           the style and the template brief
   detect-app [url] [--start] [--json]      find the running app; with --start, start it with the project's command
   stop-app                                 stop the app, only if Pushreel started it
   explore-shot <url> [<url> …] [--steps '<json>'] [--name scene-1] [--login] [--consent accept] [--json]
@@ -66,7 +79,7 @@ function parse(argv) {
     if (a.startsWith('--')) {
       const [k, v] = a.slice(2).split(/=(.*)/s);
       if (v !== undefined) opt[k] = v;
-      else if (['json', 'yes', 'start', 'no-open', 'help', 'fresh', 'force', 'login'].includes(k) || i + 1 >= argv.length || argv[i + 1].startsWith('--')) opt[k] = true;
+      else if (['json', 'yes', 'start', 'no-open', 'help', 'fresh', 'force', 'login', 'no-project-style'].includes(k) || i + 1 >= argv.length || argv[i + 1].startsWith('--')) opt[k] = true;
       else opt[k] = argv[++i];
     } else pos.push(a);
   }
@@ -113,12 +126,14 @@ async function dispatch(cmd, pos, opt, dir) {
       // The pipeline step begins here, by fixed code: the agent's message that starts it belongs to the step before,
       // so this row is 0 tokens by construction.
       if (tracked) mark(dir, 'pipeline');
-      const res = await pipeline(dir, { mode, skip: ids(opt.skip), url: pos[0], shotlistFile: opt.shotlist ? resolve(opt.shotlist) : undefined, say: out });
+      const res = await pipeline(dir, { mode, skip: ids(opt.skip), url: pos[0], shotlistFile: opt.shotlist ? resolve(opt.shotlist) : undefined, say: out, ...lookOpts(opt) });
       if (res.status === 'paused') { process.stderr.write('\n' + formatError(res.error) + '\n'); return 2; }
       const marks = readJson(p.costMarks);
       if (tracked) mark(dir, 'summary'); // whatever the agent writes from here on is the summary
       const { pasteBlock, lastModelNote } = await import('./model.js');
-      const lines = [`Files in ./${res.run.outDir}/`, ...res.run.files.filter((f) => f.kind === 'video' || f.kind === 'cover' || f.kind === 'texts').map((f) => `  ${f.name.padEnd(24)} ${f.seconds ? `${f.seconds} s  ` : ''}${fmtSize(f.bytes)}${f.kind === 'cover' ? '  cover image' : f.kind === 'texts' ? '  post texts (drafts)' : ''}`), '', formatReport(report(dir, opt.session))];
+      const t = res.run.template;
+      const lines = [`Files in ./${res.run.outDir}/`, ...res.run.files.filter((f) => f.kind === 'video' || f.kind === 'cover' || f.kind === 'texts').map((f) => `  ${f.name.padEnd(24)} ${f.seconds ? `${f.seconds} s  ` : ''}${fmtSize(f.bytes)}${f.kind === 'cover' ? '  cover image' : f.kind === 'texts' ? '  post texts (drafts)' : ''}`),
+        `Style:    ${res.run.style.line}`, `Template: ${t && t.name ? `${t.name} (${t.kind}), chosen by ${t.from}` : 'none'}${t && t.rulesFrom.length ? `; rules from ${t.rulesFrom.join(' + ')}, all kept` : ''}`, '', formatReport(report(dir, opt.session))];
       // The estimate and the model note again, from fixed code: an agent in a non-interactive run often writes
       // nothing between its tool calls, so the note of `begin` may never have reached the chat. Here it stands
       // next to what the run really cost.
@@ -183,10 +198,13 @@ async function dispatch(cmd, pos, opt, dir) {
       } catch (e) { if (!(e instanceof PushreelError)) throw e; appLine = `App: ${e.title}. ${e.text}`; d = { running: false }; }
       const { readSaved } = await import('./session.js');
       const auth = readSaved(p.auth);
+      const look = await lookLines(dir, opt);
       out(appLine);
       out(`Login: ${auth ? `a saved session is on file (pushreel login${auth.savedAt ? `, ${auth.savedAt.slice(0, 10)}` : ''}); pages behind the login open signed in` : process.env.PUSHREEL_LOGIN ? 'PUSHREEL_LOGIN is set (password form)' : 'none. Pages behind a login cannot be shown until the user runs /pushreel login (any login, also OAuth) or sets PUSHREEL_LOGIN (password form)'}.`);
+      for (const l of look.lines) out(l);
       out(note.text);
       if (d.running && session) out('Next: Pushreel shows the note above to the user by itself (a hook). explore-shot refuses to run until the user has seen it; if it answers "Not yet", write the note as the visible text of your reply and repeat the call.');
+      if (look.failed) { out(''); out('Stop here: fix the lines marked ✗ above (show them to the user), then run /pushreel again.'); return 1; }
       return d.running ? 0 : 4;
     }
     case 'login': {
@@ -240,11 +258,12 @@ async function dispatch(cmd, pos, opt, dir) {
       return reps.every((r) => r.ok) ? 0 : 1;
     }
     case 'validate-shotlist': case 'set-shotlist': {
-      const { validate, normalize, totalSeconds, headlineWarnings } = await import('./shotlist.js');
+      const { prepareShotlist, normalize, totalSeconds, headlineWarnings } = await import('./shotlist.js');
+      const { styleLine } = await import('./style.js');
       const file = pos[0] ? resolve(pos[0]) : p.shotlist;
       if (!existsSync(file)) throw E.noShotlist(file);
       const raw = readJson(file);
-      const res = raw === null ? { errors: [`${file} is not valid JSON.`], warnings: [] } : validate(raw);
+      const res = raw === null ? { errors: [`${file} is not valid JSON.`], warnings: [], info: [] } : prepareShotlist(raw, dir, lookOpts(opt));
       // Captions that repeat the page's own headings, from what exploring saw (.pushreel/stills/*.json).
       if (!res.errors.length) res.warnings.push(...headlineWarnings(normalize(raw), readStills(p.stills)));
       if (opt.json) out(JSON.stringify({ ok: !res.errors.length, ...res }, null, 2));
@@ -252,16 +271,20 @@ async function dispatch(cmd, pos, opt, dir) {
         for (const w of res.warnings) out(`! ${w}`);
         for (const w of res.info || []) out(`· ${w}`);
         if (res.errors.length) throw E.invalidShotlist(res.errors);
-        const s = normalize(raw), inc = s.scenes.filter((x) => x.include);
+        const s = res.shotlist, inc = s.scenes.filter((x) => x.include);
         // Exploring found a consent dialog and the shot list does nothing about it: it would be in the video.
         const consent = readJson(p.consent);
         if (consent && consent.prepare && !s.prepare) out(`! Exploring found a consent dialog ("${consent.button}"), and this shot list has no "prepare". Add  "prepare": ${JSON.stringify(consent.prepare)}  so the dialog is dismissed before the recording and never shows in the video.`);
-        out(`✓ Shot list is valid: ${inc.length} of ${s.scenes.length} scenes, ${totalSeconds(s)} s with the end card, targets ${s.targets.join(', ')}.`);
+        out(`✓ Shot list is valid: ${inc.length} of ${s.scenes.length} scenes, ${totalSeconds(s)} s with the ${s.cut.introSeconds ? 'intro and end cards' : s.cut.endCard ? 'end card' : 'cards'}, targets ${s.targets.join(', ')}.`);
+        out(`· Style: ${styleLine(res.style)}. Template: ${res.template.name ? `${res.template.name}, every slot filled and every rule kept` : res.template.rulesFrom.length ? `none; the rules of ${res.template.rulesFrom.join(' + ')} are kept` : 'none'}.`);
         out(res.warnings.length ? 'Lines marked ! ask for a change. Lines marked · need none.' : `Nothing to change${res.info && res.info.length ? ' (lines marked · are information only)' : ''}. Go on.`);
       }
       if (cmd === 'set-shotlist' && !res.errors.length && file !== p.shotlist) { ensureDir(p.state); copyFileSync(file, p.shotlist); out(`Saved as ./${relative(dir, p.shotlist)}`); }
       return res.errors.length ? 1 : 0;
     }
+
+    case 'style': return styleCommand(pos, opt, dir);
+    case 'template': case 'templates': return templateCommand(pos, opt, dir);
 
     case 'note': { // called by hooks/hooks.json after `pushreel begin`; prints a hook answer or nothing, never fails
       if (pos[0] !== 'hook') throw new PushreelError('usage', { title: 'Unknown command: note ' + (pos[0] || ''), text: 'Only "pushreel note hook" exists; Claude Code calls it.', next: [] });
@@ -400,6 +423,139 @@ async function dispatch(cmd, pos, opt, dir) {
     default:
       throw new PushreelError('usage', { title: `Unknown command "${cmd}"`, text: 'Run "pushreel help" for the list of commands.', next: ['pushreel help'] });
   }
+}
+
+/** --style, --template, --no-project-style of a command. */
+const lookOpts = (opt) => ({ style: typeof opt.style === 'string' ? opt.style : undefined, template: typeof opt.template === 'string' ? opt.template : undefined, noProjectStyle: !!opt['no-project-style'] });
+
+/**
+ * The style and template part of `begin`: checks the names, remembers them for this project (.pushreel/choice.json,
+ * read by validate-shotlist and run when the shot list does not name them), and prints the template brief.
+ */
+async function lookLines(dir, opt) {
+  const { resolveStyle, styleLine, PROJECT_STYLE } = await import('./style.js');
+  const { resolveTemplate, brief } = await import('./template.js');
+  const p = paths(dir), o = lookOpts(opt), lines = [];
+  const st = resolveStyle(dir, { name: o.style, raw: {} }), tp = resolveTemplate(dir, { name: o.template, raw: {} });
+  const failed = st.errors.length || tp.errors.length;
+  for (const e of [...st.errors, ...tp.errors]) lines.push(`✗ ${e}`);
+  if (!failed) writeJson(p.choice, { style: o.style || null, template: o.template || null, at: new Date().toISOString() });
+  if (st.errors.length) return { lines, failed };
+  lines.push(`Style: ${styleLine(st)}. Fixed code applies it to captions, cards, cover and motion.${st.project ? ` The project has ${PROJECT_STYLE}: do not set "app.brandColor" or "style" in the shot list.` : ' No pushreel.style.json in this project: take "app.brandColor" from the "brand" field of the first explore-shot report, never from an example.'}`);
+  for (const w of st.warnings) lines.push(`  ! ${w}`);
+  if (tp.errors.length) return { lines, failed };
+  const b = brief(tp);
+  if (b) lines.push(b);
+  return { lines, failed };
+}
+
+async function styleCommand(pos, opt, dir) {
+  const S = await import('./style.js');
+  const sub = pos.shift() || 'show', file = S.projectStyleFile(dir);
+  if (sub === 'list') {
+    const proj = S.readProjectStyle(dir);
+    const desc = (f) => (S.readStyleFile(f).data || {}).description || '';
+    out('Built-in styles (in the plugin):');
+    for (const n of S.builtinNames()) out(`  ${n.padEnd(10)} ${desc(join(S.STYLE_DIR, `${n}.json`))}${n === S.DEFAULT_STYLE ? ' (the default)' : ''}`);
+    const lib = S.libraryNames();
+    out(`Your library (${S.libraryDir()}): ${lib.length ? '' : 'none yet. A file <name>.json there is a style you can use in every project with --style <name>.'}`);
+    for (const n of lib) out(`  ${n.padEnd(10)} ${desc(join(S.libraryDir(), `${n}.json`))}${S.builtinNames().includes(n) ? ` (laid over the built-in "${n}")` : ''}`);
+    out(proj ? `This project: ${S.PROJECT_STYLE}${proj.error ? ` (✗ ${proj.error})` : `, based on "${(proj.data && proj.data.extends) || S.DEFAULT_STYLE}". Every run here uses it.`}` : `This project: no ${S.PROJECT_STYLE}. Make one from your app: pushreel style init`);
+    return 0;
+  }
+  if (sub === 'show') {
+    const name = pos[0];
+    const { readJson: rj } = await import('./util.js');
+    const r = S.resolveStyle(dir, name ? { name, nameFrom: 'style show', noProject: true } : { raw: rj(paths(dir).shotlist) || {}, name: lookOpts(opt).style, noProject: !!opt['no-project-style'] });
+    if (opt.json) { out(JSON.stringify({ style: r.style, sources: r.sources, layers: r.layers, errors: r.errors, warnings: r.warnings }, null, 2)); return r.errors.length ? 1 : 0; }
+    for (const e of r.errors) out(`✗ ${e}`);
+    if (r.errors.length) return 1;
+    out(name ? `Style "${name}": ${S.styleLine(r)}` : `The style of a run in this project: ${S.styleLine(r)}`);
+    for (const g of S.GROUPS) {
+      out(`  ${g}`);
+      for (const k of Object.keys(S.SPEC).filter((x) => x.startsWith(g + '.'))) out(`    ${k.split('.')[1].padEnd(15)} ${JSON.stringify(S.getPath(r.style, k)).padEnd(24)} ${r.sources[k] || ''}`);
+    }
+    for (const w of r.warnings) out(`! ${w}`);
+    return 0;
+  }
+  if (sub === 'init') {
+    if (existsSync(file) && !opt.force) { out(`${S.PROJECT_STYLE} exists already. Change single values with: pushreel style set <key=value>. Read the app again and replace it: pushreel style init --force`); return 1; }
+    const { detectApp, ensureApp, stopApp } = await import('./detect.js');
+    let url = pos[0] && /^https?:\/\//.test(pos[0]) ? new URL(pos[0]).origin : null, started = false;
+    if (!url) { const d = await detectApp(dir); if (d.running) url = d.url; else { const a = await ensureApp(dir, { log: () => {} }); url = a.url; started = !a.already; } }
+    const { detectBrand, styleFromBrand, writeInlineLogo } = await import('./brand.js');
+    let found;
+    try { found = await detectBrand(dir, { url, path: pos[0] && /^https?:\/\//.test(pos[0]) ? new URL(pos[0]).pathname : '/' }); }
+    finally { if (started) await stopApp(dir).catch(() => {}); }
+    const base = typeof opt.style === 'string' ? opt.style : S.DEFAULT_STYLE;
+    const st = styleFromBrand(found, base);
+    writeInlineLogo(dir, found);
+    writeFileSync(file, JSON.stringify(st, null, 2) + '\n');
+    const check = S.resolveStyle(dir, { raw: {} });
+    out(`Read ${found.page}${started ? ' (Pushreel started your app for this and stopped it again)' : ''}. Found:`);
+    out(`  Brand colour  ${found.color ? `${found.color.hex}  from the ${found.color.source}` : 'none'}`);
+    const others = found.colors.filter((c) => !found.color || c.hex !== found.color.hex).slice(0, 4);
+    if (others.length) out(`                also seen: ${others.map((c) => `${c.hex} (${c.source})`).join(', ')}`);
+    out(`  Main font     ${found.font.value}${found.font.family && found.font.family !== found.font.value ? `  for "${found.font.family}"` : ''}, ${found.font.source}`);
+    out(`  Logo          ${found.logo ? `${found.logo.value}  from ${found.logo.source}${found.logo.inline ? ' (written to the project as this file)' : ''}` : 'none'}`);
+    for (const n of found.notes) out(`  · ${n}`);
+    out('');
+    out(`Wrote ./${S.PROJECT_STYLE}, based on the "${base}" style:`);
+    out(JSON.stringify(st, null, 2));
+    for (const e of check.errors) out(`✗ ${e}`);
+    for (const w of check.warnings) out(`! ${w}`);
+    out('');
+    out('Correct anything that is wrong: pushreel style set endCard.background=#123456 (or captions.font=…, endCard.logo=…),');
+    out('or open the Studio (pushreel studio → Style). Commit pushreel.style.json: every run in this project uses it.');
+    return check.errors.length ? 1 : 0;
+  }
+  if (sub === 'set' || sub === 'unset') {
+    if (!pos.length) { out(sub === 'set' ? 'Usage: pushreel style set captions.background=#0e0a1f endCard.duration=2.5' : 'Usage: pushreel style unset captions.size'); return 1; }
+    const cur = existsSync(file) ? S.readStyleFile(file) : { data: { $schema: 'https://raw.githubusercontent.com/IonFlux84/pushreel/main/docs/style.schema.json', extends: S.DEFAULT_STYLE } };
+    if (cur.error) { out(`✗ ${cur.error}`); return 1; }
+    const next = S.clone(cur.data), done = [];
+    for (const a of pos) {
+      if (sub === 'unset') {
+        const [g, k] = a.split('.');
+        if (!S.SPEC[a] && !S.META_KEYS.includes(a)) { out(`✗ "${a}" is not a style setting.`); return 1; }
+        if (k && next[g]) { delete next[g][k]; if (!Object.keys(next[g]).length) delete next[g]; } else delete next[a];
+        done.push(a); continue;
+      }
+      const meta = /^(extends|template)=(.*)$/.exec(a);
+      if (meta) { next[meta[1]] = meta[2] || undefined; done.push(`${meta[1]} = ${JSON.stringify(meta[2])}`); continue; }
+      const r = S.parseAssignment(a);
+      if (r.problem) { out(`✗ ${r.problem}`); return 1; }
+      S.setPath(next, r.key, r.value); done.push(`${r.key} = ${JSON.stringify(r.value)}`);
+    }
+    const v = S.validateStyle(next, { label: S.PROJECT_STYLE, projectDir: dir });
+    if (v.errors.length) { for (const e of v.errors) out(`✗ ${e}`); out('Nothing was changed.'); return 1; }
+    writeFileSync(file, JSON.stringify(next, null, 2) + '\n');
+    out(`${sub === 'set' ? 'Set' : 'Removed'} in ./${S.PROJECT_STYLE}: ${done.join(', ')}.`);
+    const r = S.resolveStyle(dir, { raw: {} });
+    for (const w of [...v.warnings, ...r.warnings]) out(`! ${w}`);
+    out('The next run uses it. Without recording again: pushreel rerender' + (pos.some((a) => /^motion\.(cursor|clickColor|scrollSpeed)/.test(a)) ? ' (the pointer and the scroll speed are in the footage: those scenes are recorded again)' : ''));
+    return 0;
+  }
+  throw new PushreelError('usage', { title: `Unknown style command "${sub}"`, text: 'Use: pushreel style init | list | show [name] | set <key=value> … | unset <key> …', next: ['pushreel help'] });
+}
+
+async function templateCommand(pos, opt, dir) {
+  const T = await import('./template.js');
+  const sub = pos.shift() || 'list';
+  if (sub === 'list') {
+    out('Story templates. Use one with /pushreel --template <name>, or set "template" in pushreel.style.json.');
+    for (const n of T.allTemplates()) { const t = T.loadTemplate(n); out(`  ${n.padEnd(10)} ${t.error ? `✗ ${t.error}` : `${(t.template.slots || []).map((x) => `${x.id}${x.min === x.max ? (x.max > 1 ? ` ×${x.max}` : '') : ` ×${x.min}-${x.max}`}`).join(' → ')}${t.kind === 'library' ? '  (your library)' : ''}  ${t.template.description || ''}`}`); }
+    out(`Your own: ${T.templateLibrary()}/<name>.json (docs/STYLES.md, "Templates").`);
+    return 0;
+  }
+  if (sub === 'show') {
+    if (!pos[0]) { out('Usage: pushreel template show launch'); return 1; }
+    const r = T.resolveTemplate(dir, { name: pos[0], nameFrom: 'template show', raw: {} });
+    if (r.errors.length) { for (const e of r.errors) out(`✗ ${e}`); return 1; }
+    out(opt.json ? JSON.stringify({ template: r.template, rules: r.rules, rulesFrom: r.rulesFrom }, null, 2) : T.brief(r));
+    return 0;
+  }
+  throw new PushreelError('usage', { title: `Unknown template command "${sub}"`, text: 'Use: pushreel template list | show <name>', next: ['pushreel help'] });
 }
 
 const TITLES = { network: 'The licence provider could not be reached', limit: 'No free place on this licence key', inactive: 'This licence key is not active any more', invalid_key: 'This licence key is not known', wrong_product: 'This key is for another product', not_configured: 'This build has no product to check keys against', other_key: 'This machine already has a licence' };

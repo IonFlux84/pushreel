@@ -20,14 +20,20 @@ export const overlap = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Ma
  *   align  'left' | 'center'
  *   hard   [{x,y,w,h}]      must not be covered (rule 1); `hard` in the result is the covered share of the worst one
  *   soft   [{x,y,w,h,weight?}]  should not be covered (rule 2); weight = share of the scene it is visible, default 1
- *   prefer 'bottom' | 'center'
+ *   prefer 'bottom' | 'top' | 'center' | 'auto'   the home position; 'auto' tries bottom and top and takes the one
+ *          that covers less (bottom on a tie)
  *   step   distance between candidate positions (px)
- * @returns {{ x, y, band, hard, soft, moved }} band: 'bottom' | 'lower-middle' | 'upper-middle' | 'top' | 'center'
+ * @returns {{ x, y, band, hard, soft, moved, home }} band: 'bottom' | 'lower-middle' | 'upper-middle' | 'top' | 'center'
  */
-export function placeBand({ area, size, align = 'center', hard = [], soft = [], prefer = 'bottom', step = 48 }) {
+export function placeBand(o) {
+  if (o.prefer === 'auto') {
+    const b = placeBand({ ...o, prefer: 'bottom' }), t = placeBand({ ...o, prefer: 'top' });
+    return t.hard < b.hard || (t.hard === b.hard && (t.soft < b.soft || (t.soft === b.soft && b.moved && !t.moved))) ? t : b;
+  }
+  const { area, size, align = 'center', hard = [], soft = [], prefer = 'bottom', step = 48 } = o;
   const x = align === 'left' ? area.x : area.x + (area.w - size.w) / 2;
   const maxY = area.y + Math.max(0, area.h - size.h), minY = area.y;
-  const home = prefer === 'center' ? Math.round(area.y + (area.h - size.h) / 2) : maxY;
+  const home = prefer === 'center' ? Math.round(area.y + (area.h - size.h) / 2) : prefer === 'top' ? minY : maxY;
   const ys = new Set([home]);
   for (let y = home - step; y >= minY; y -= step) ys.add(Math.round(y));
   for (let y = home + step; y <= maxY; y += step) ys.add(Math.round(y));
@@ -47,7 +53,7 @@ export function placeBand({ area, size, align = 'center', hard = [], soft = [], 
   const box = { x, y: best.y, w: size.w, h: size.h }, by = {};
   // the worst moment per kind: the largest share of the caption that one element covers
   for (const r of soft) { const o = Math.min(1, overlap(box, r) / boxArea); if (o > 0.02) by[r.kind || 'page'] = round2(Math.max(by[r.kind || 'page'] || 0, o)); }
-  return { x: Math.round(x), y: best.y, band: bandName(best.y + size.h / 2, best.y === home, prefer), hard: round2(best.hard), soft: round2(best.soft), moved: best.y !== home, covers: by, free: !best.hard && !best.soft };
+  return { x: Math.round(x), y: best.y, band: bandName(best.y + size.h / 2, best.y === home, prefer), home: prefer, hard: round2(best.hard), soft: round2(best.soft), moved: best.y !== home, covers: by, free: !best.hard && !best.soft };
 }
 const round2 = (n) => Math.round(n * 100) / 100;
 function bandName(centerY, isHome, prefer) {
@@ -138,10 +144,11 @@ export function layoutAt(layout = [], t = 0) {
  * Caption position for one scene on one platform.
  * @param {string} platform
  * @param {{w,h}} size measured caption box (px)
- * @param {{ clicks?: rect[], layout?: Array, length?: number }} scene clicks from clickRects() (px)
+ * @param {{ clicks?: rect[], layout?: Array, length?: number, zoom?: Array, prefer?: 'bottom'|'top'|'auto', avoid?: Array }} scene
+ *   clicks from clickRects() (px); prefer is the style's captions.position; avoid: more boxes to keep off (the corner logo)
  */
-export function placeCaption(platform, size, { clicks = [], layout = [], length = 1, zoom = [] } = {}) {
-  return placeBand({ area: safeRect(platform), size, align: PLATFORMS[platform].caption.align, hard: clicks, soft: softRects(layout, length, zoom), prefer: 'bottom' });
+export function placeCaption(platform, size, { clicks = [], layout = [], length = 1, zoom = [], prefer = 'bottom', avoid = [] } = {}) {
+  return placeBand({ area: safeRect(platform), size, align: PLATFORMS[platform].caption.align, hard: clicks, soft: [...softRects(layout, length, zoom), ...avoid], prefer });
 }
 
 /** The part of the cover that survives the 4:5 and 1:1 grid crops, minus a margin. */

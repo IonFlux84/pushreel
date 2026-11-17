@@ -105,6 +105,31 @@ can run code on your machine. Everything Pushreel runs is in this repository: st
 Pushreel finds your app or starts it with your project's own dev command, explores it and shows you the shot
 list. Your three videos land in `pushreel-out/`.
 
+## Your brand, every run
+
+```
+/pushreel style init
+```
+
+reads your running app's main colour, font and logo and writes `pushreel.style.json` into your project. Commit
+it, and every run uses it: captions, end card, cover, pointer and zoom, applied by fixed code with 0 tokens.
+Start from a built-in style (`bold`, the default; `clean`; `neon`), or keep your own in `~/.pushreel/styles/`.
+
+```json
+{
+  "extends": "clean",
+  "template": "launch",
+  "captions": { "font": "public/fonts/Inter-Bold.woff2", "highlight": "#e8590c" },
+  "endCard": { "background": "#1c1917", "logo": "public/logo.svg", "cta": "Try it free at acme.app" },
+  "rules": { "captions": { "maxWords": 6, "bannedWords": ["simply"] }, "paths": { "neverShow": ["/admin*"] } }
+}
+```
+
+A story template (`/pushreel --template launch`: a hook, three features, the price) tells the agent which
+scenes to find, and the validator refuses a shot list that breaks a rule it can measure: words per caption,
+banned words, emoji, pages to show or never show, lengths, hashtags. Change the look later in the Studio's
+**Style** screen and re-render without the model. Everything: [docs/STYLES.md](docs/STYLES.md).
+
 ## Updates
 
 Updates are included through the end of 2027. Claude Code does not update plugins from third-party
@@ -121,10 +146,13 @@ marketplaces by itself, so get a new version in one of two ways:
 | `/pushreel` | Explore, propose a shot list, ask, then record, cut, export | yes |
 | `/pushreel --yes` | The same without asking | yes |
 | `/pushreel http://localhost:3000` | Use the app at this address | yes |
+| `/pushreel --style neon`, `--template launch` | The same with a style or a story template | yes |
+| `/pushreel style init` | Read your app's colour, font and logo into `pushreel.style.json` | no |
+| `/pushreel style list`, `style show`, `template list` | The styles and templates, and where each value comes from | no |
 | `/pushreel login` | Sign in to your app by hand once (OAuth, magic link, SSO); the session is reused | no |
 | `/pushreel studio` | Open the review screen at http://localhost:4317 | no |
 | `/pushreel record` | Record the saved shot list again after your UI changed | no |
-| `/pushreel rerender` | Export again after changing captions, lengths or scenes | no |
+| `/pushreel rerender` | Export again after changing captions, lengths, scenes or the style | no |
 | `/pushreel resume`, `resume --skip 3,4`, `cancel` | Continue, skip or end a paused run | no |
 | `/pushreel status`, `doctor` | Where the run stands, and what is missing on this machine | no |
 | `/pushreel activate <key>`, `licence`, `deactivate` | Manage the licence | no |
@@ -213,8 +241,8 @@ only model names, token counts, step times, the session id and the amounts it co
 and `.pushreel/model.json` in your project.
 
 **Files Pushreel writes** (see also [What Pushreel writes](docs/USAGE.md#what-pushreel-writes)): `.pushreel/` and
-`pushreel-out/` in your project, and `~/.pushreel/license.json` and `~/.pushreel/config.json` in your home
-folder. Nothing is written into `~/.claude`. All of it stays until you delete it.
+`pushreel-out/` in your project, `pushreel.style.json` when you run `style init` or save in the Studio, and
+`~/.pushreel/license.json` and `~/.pushreel/config.json` in your home folder. Nothing is written into `~/.claude`. All of it stays until you delete it.
 
 **Privacy policy:** [pushreel.dev/privacy](https://pushreel.dev/privacy).
 **Support and security reports:** [hello@pushreel.dev](mailto:hello@pushreel.dev).
@@ -236,6 +264,7 @@ folder. Nothing is written into `~/.claude`. All of it stays until you delete it
 ## Docs
 
 - [docs/USAGE.md](docs/USAGE.md): terminal use without Claude Code, logins and consent banners, files Pushreel writes, troubleshooting
+- [docs/STYLES.md](docs/STYLES.md): styles, templates and rules, every setting
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how it is built, the shot list format, the decisions
 - [docs/LOGIN.md](docs/LOGIN.md): saved sessions, login scripts for CI, consent banners and `prepare`
 - [docs/PLATFORMS.md](docs/PLATFORMS.md): platform values with sources

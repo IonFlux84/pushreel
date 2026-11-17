@@ -24,18 +24,20 @@ export async function launch(viewportWidth = 360, { headless = true } = {}) {
   return { browser, vp };
 }
 
-export async function newContext(browser, vp, { storageState, colorScheme = 'light', cursor = true } = {}) {
+export async function newContext(browser, vp, { storageState, colorScheme = 'light', cursor = true, cursorKind = 'arrow', clickColor = '#ff2a8a' } = {}) {
   const ctx = await browser.newContext({
     viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: vp.scale, isMobile: false, hasTouch: false,
     colorScheme, reducedMotion: 'no-preference', storageState: storageState || undefined, locale: 'en-US',
   });
-  if (cursor) await ctx.addInitScript(cursorScript);
+  if (cursor && cursorKind !== 'none') await ctx.addInitScript(cursorScript, { kind: cursorKind === 'dot' ? 'dot' : 'arrow', ring: /^#[0-9a-f]{6}$/i.test(clickColor || '') ? clickColor : '#ff2a8a' });
   return ctx;
 }
 
-/** Runs inside every page: draws an arrow that follows the mouse and a ring on every click. */
-function cursorScript() {
+/** Runs inside every page: draws a pointer (an arrow or a dot, from the style) that follows the mouse and a ring on every click. */
+function cursorScript(opt) {
   if (window.top !== window || window.__pushreelCursor) return;
+  const kind = (opt && opt.kind) || 'arrow', ringColor = (opt && opt.ring) || '#ff2a8a';
+  const hex = ringColor.replace('#', ''), rgb = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(',');
   window.__pushreelCursor = true;
   const KEY = '__pushreel_xy';
   const make = () => {
@@ -44,8 +46,10 @@ function cursorScript() {
     root.id = '__pushreel_cursor';
     root.setAttribute('aria-hidden', 'true');
     root.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;z-index:2147483647;pointer-events:none;contain:layout style;';
-    root.innerHTML = '<div data-ring style="position:absolute;left:0;top:0;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;border:3px solid #ff2a8a;background:rgba(255,42,138,.18);opacity:0;transform:scale(.3);"></div>' +
-      '<svg data-arrow viewBox="0 0 20 20" width="30" height="30" style="position:absolute;left:-4.5px;top:-3px;filter:drop-shadow(0 1px 2px rgba(14,10,31,.45));"><path d="M3 2l13 6.2-5.6 1.7L8.2 16z" fill="#fff" stroke="#0e0a1f" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+    root.innerHTML = '<div data-ring style="position:absolute;left:0;top:0;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;border:3px solid ' + ringColor + ';background:rgba(' + rgb + ',.18);opacity:0;transform:scale(.3);"></div>' +
+      (kind === 'dot'
+        ? '<div data-arrow style="position:absolute;left:-11px;top:-11px;width:22px;height:22px;border-radius:50%;background:rgba(14,10,31,.5);border:2.5px solid #fff;box-shadow:0 1px 4px rgba(14,10,31,.4);"></div>'
+        : '<svg data-arrow viewBox="0 0 20 20" width="30" height="30" style="position:absolute;left:-4.5px;top:-3px;filter:drop-shadow(0 1px 2px rgba(14,10,31,.45));"><path d="M3 2l13 6.2-5.6 1.7L8.2 16z" fill="#fff" stroke="#0e0a1f" stroke-width="1.6" stroke-linejoin="round"/></svg>');
     (document.body || document.documentElement).appendChild(root);
     const ring = root.querySelector('[data-ring]');
     const place = (x, y) => { root.style.transform = 'translate(' + x + 'px,' + y + 'px)'; };
@@ -186,7 +190,7 @@ export async function runStep(page, step, state, index) {
         // the distance that brings the element to the middle of the window
         dy = await loc.evaluate((el) => { const r = el.getBoundingClientRect(); return r.top + r.height / 2 - innerHeight / 2; }).catch((e) => { throw notFound(e); });
       }
-      const t0 = state.now(), moved = await smoothScroll(page, dy);
+      const t0 = state.now(), moved = await smoothScroll(page, dy, state.scrollSpeed || 1);
       if (state.events.scrolls) state.events.scrolls.push({ t: t0, end: state.now(), px: Math.round(moved.moved), ms: moved.ms, step: index });
       await sleep(250);
       break;
@@ -205,10 +209,11 @@ export async function runStep(page, step, state, index) {
  * A page that scrolls inside a container gets the same curve as wheel events.
  * @returns {Promise<{ moved: number, ms: number }>}
  */
-export async function smoothScroll(page, dy) {
+export async function smoothScroll(page, dy, speed = 1) {
+  const length = (d) => Math.max(200, Math.round(scrollDuration(d) / Math.max(0.5, Math.min(2, speed || 1))));
   const room = await page.evaluate((d) => { const el = document.scrollingElement || document.documentElement; const max = el.scrollHeight - el.clientHeight; return Math.max(0, Math.min(max, el.scrollTop + d)) - el.scrollTop; }, dy).catch(() => 0);
   if (Math.abs(room) >= 1) {
-    const ms = scrollDuration(room);
+    const ms = length(room);
     await page.evaluate(({ d, ms }) => new Promise((done) => {
       const el = document.scrollingElement || document.documentElement, html = document.documentElement;
       const from = el.scrollTop, before = html.style.scrollBehavior;
@@ -224,7 +229,7 @@ export async function smoothScroll(page, dy) {
     return { moved: room, ms };
   }
   if (Math.abs(dy) < 1) return { moved: 0, ms: 0 };
-  const ms = scrollDuration(dy), deltas = scrollDeltas(dy, ms);
+  const ms = length(dy), deltas = scrollDeltas(dy, ms);
   const t0 = Date.now();
   for (let i = 0; i < deltas.length; i++) { await page.mouse.wheel(0, deltas[i]); const due = t0 + (ms * (i + 1)) / deltas.length - Date.now(); if (due > 0) await sleep(due); }
   return { moved: dy, ms };
@@ -333,7 +338,29 @@ export async function navigate(page, url, state) {
 export async function settle(page, ms = 150) {
   await page.evaluate(() => (document.fonts && document.fonts.ready ? document.fonts.ready : null)).catch(() => {});
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))).catch(() => {});
+  await waitScrollStill(page);
   await sleep(ms);
+}
+
+/**
+ * Waits until the page has stopped scrolling by itself. A scene address with an anchor (`/#price`) on a page with
+ * `scroll-behavior: smooth` glides to its section after the load; without this wait the recording started in the
+ * middle of that glide and the scene's first `scroll` step fought with it (found recording pushreel.dev).
+ * Still = the same position in `still` samples in a row, `every` ms apart; gives up after `max` ms.
+ */
+export async function waitScrollStill(page, { every = 50, still = 3, max = 2500 } = {}) {
+  const read = () => page.evaluate(() => {
+    const el = document.scrollingElement || document.documentElement;
+    return `${Math.round(el.scrollLeft)},${Math.round(el.scrollTop)}`;
+  }).catch(() => null);
+  let last = await read(), same = 0;
+  for (let waited = 0; waited < max && same < still; waited += every) {
+    await sleep(every);
+    const now = await read();
+    if (now === null) return false;
+    same = now === last ? same + 1 : 0; last = now;
+  }
+  return same >= still;
 }
 
 const DEFAULT_LOGIN_STEPS = [

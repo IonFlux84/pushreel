@@ -2,10 +2,12 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { PLATFORMS, PLATFORM_KEYS, VIEWPORTS, END_CARD_SECONDS } from './presets.js';
-import { readJson, slugify } from './util.js';
+import { readJson, slugify, paths } from './util.js';
 import { E } from './errors.js';
 import { parsePrepare } from './session.js';
 import { estimateEnds, trimTail, STILL_TAIL } from './motion.js';
+import { resolveStyle, applyStyle } from './style.js';
+import { resolveTemplate, checkRules } from './template.js';
 
 export const STEP_KINDS = ['click', 'type', 'press', 'hover', 'scroll', 'goto', 'wait', 'waitFor', 'hold'];
 export const DEFAULT_CUT = { zoom: 1.4, removeWaitsOver: 0.6, captions: true, endCard: true, trimStillTails: STILL_TAIL };
@@ -41,10 +43,12 @@ export function normalize(raw) {
  * Errors block recording. Warnings are shown and do not block; each one asks for a change.
  * Info lines need no action (for example still picture that the cut trims by itself).
  */
-export function validate(raw) {
+export function validate(raw, ctx = {}) {
   const errors = [], warnings = [], info = [];
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { errors: ['The file must contain one JSON object.'], warnings, info };
   const s = normalize(raw);
+  // The style decides the lengths of the end card and the intro (src/style.js); without one, 2 s and none.
+  if (ctx.cut) Object.assign(s.cut, ctx.cut);
   if (s.version !== 1) errors.push(`"version" is ${s.version}. This Pushreel reads version 1.`);
   if (!isStr(s.app.name)) errors.push('"app.name" is missing. It is shown on the end card and used for file names.');
   if (s.app.slug && !SLUG.test(s.app.slug)) errors.push('"app.slug" may contain a-z, 0-9 and single hyphens between them (e.g. "tiny-wins"). It becomes the file name, e.g. tiny-wins-short.mp4.');
@@ -77,6 +81,7 @@ export function validate(raw) {
     else if (!/^(\/|https?:\/\/)/.test(sc.url)) errors.push(`${at}: "url" must start with "/" or with http(s)://.`);
     if (!isNum(sc.duration) || sc.duration < LIMITS.minScene || sc.duration > LIMITS.maxScene) errors.push(`${at}: "duration" must be ${LIMITS.minScene} to ${LIMITS.maxScene} seconds.`);
     if (typeof sc.caption !== 'string') errors.push(`${at}: "caption" must be text (it may be empty).`);
+    if (sc.slot !== undefined && sc.slot !== null && typeof sc.slot !== 'string') errors.push(`${at}: "slot" must be the name of a template slot, e.g. "hook".`);
     if (!Array.isArray(sc.steps)) { errors.push(`${at}: "steps" must be a list.`); return; }
     if (sc.steps.length > LIMITS.maxSteps) errors.push(`${at}: ${sc.steps.length} steps. The limit is ${LIMITS.maxSteps}.`);
     sc.steps.forEach((st, j) => { const p = stepProblem(st); if (p) errors.push(`${at}, step ${j + 1}: ${p}`); });
@@ -162,11 +167,12 @@ export function stepProblem(st) {
   return null;
 }
 
-/** Planned length of the final video in whole seconds: included scenes plus the end card. */
+/** Planned length of the final video in seconds: included scenes plus the end card and the intro card. */
 export function totalSeconds(s, skip = []) {
   const scenes = s.scenes.filter((sc) => sc.include !== false && !skip.includes(sc.id));
   const sum = scenes.reduce((a, sc) => a + sc.duration, 0);
-  return Math.round((sum + (s.cut.endCard && scenes.length ? END_CARD_SECONDS : 0)) * 10) / 10;
+  const cards = scenes.length ? (s.cut.endCard ? s.cut.endSeconds ?? END_CARD_SECONDS : 0) + (s.cut.introSeconds || 0) : 0;
+  return Math.round((sum + cards) * 10) / 10;
 }
 
 /**
@@ -176,18 +182,63 @@ export function totalSeconds(s, skip = []) {
  */
 export function sceneHash(s, scene) {
   const prepare = parsePrepare(s.prepare);
-  const rec = { url: scene.url, steps: scene.steps, requiresLogin: !!scene.requiresLogin, viewport: s.viewport.width, cursor: s.cursor, login: scene.requiresLogin ? s.login || null : null, colorScheme: s.colorScheme || 'light', ...(prepare ? { prepare } : {}) };
+  // The motion values of a style change the picture (pointer, click ring, scroll speed). They are in the fingerprint
+  // only when they differ from the look before 0.6.0, so footage recorded with an earlier version stays valid.
+  const m = s.motion || {}, motion = {};
+  if (s.cursor && m.cursor && m.cursor !== 'arrow') motion.cursorKind = m.cursor;
+  if (s.cursor && m.clickColor && m.clickColor.toLowerCase() !== '#ff2a8a') motion.clickColor = m.clickColor.toLowerCase();
+  if (m.scrollSpeed && m.scrollSpeed !== 1) motion.scrollSpeed = m.scrollSpeed;
+  const rec = { url: scene.url, steps: scene.steps, requiresLogin: !!scene.requiresLogin, viewport: s.viewport.width, cursor: s.cursor, login: scene.requiresLogin ? s.login || null : null, colorScheme: s.colorScheme || 'light', ...(prepare ? { prepare } : {}), ...motion };
   return createHash('sha256').update(JSON.stringify(rec)).digest('hex').slice(0, 16);
 }
 
-/** Loads, validates and normalizes. Throws a PushreelError with every problem listed. */
-export function loadShotlist(file) {
+/**
+ * The style and template choice that `pushreel begin --style … --template …` remembered for this project
+ * (.pushreel/choice.json). Used when the shot list does not name them itself.
+ */
+export function readChoice(projectDir) {
+  const c = projectDir ? readJson(paths(projectDir).choice) : null;
+  return c && typeof c === 'object' ? c : {};
+}
+
+/**
+ * A shot list with its style and template: validated, normalized, styled. Errors include the style file's problems and
+ * the template's measurable rules.
+ * @param {object} raw the shot list as written
+ * @param {string} projectDir
+ * @param {{ style?: string, template?: string, noProjectStyle?: boolean }} o the --style and --template of this command
+ * @returns {{ shotlist: object|null, errors: string[], warnings: string[], info: string[], style: object, template: object }}
+ */
+export function prepareShotlist(raw, projectDir, o = {}) {
+  const choice = readChoice(projectDir);
+  const style = resolveStyle(projectDir, {
+    name: o.style || choice.style, nameFrom: o.style ? '--style' : choice.style ? '/pushreel --style (remembered in .pushreel/choice.json)' : undefined,
+    raw: raw && typeof raw === 'object' ? raw : {}, noProject: !!o.noProjectStyle,
+  });
+  const template = resolveTemplate(projectDir, {
+    name: o.template || choice.template, nameFrom: o.template ? '--template' : choice.template ? '/pushreel --template (remembered in .pushreel/choice.json)' : undefined,
+    raw: raw && typeof raw === 'object' ? raw : {}, noProject: !!o.noProjectStyle,
+  });
+  const st = style.style, cut = st.endCard ? { endSeconds: st.endCard.duration, introSeconds: st.intro.enabled ? st.intro.duration : 0, endCard: shotlistEndCard(raw, st) } : {};
+  const v = validate(raw, { cut });
+  const errors = [...v.errors, ...style.errors, ...template.errors];
+  let shotlist = null;
+  if (!v.errors.length && !style.errors.length) {
+    shotlist = applyStyle(normalize(raw), style);
+    if (!template.errors.length) errors.push(...checkRules(shotlist, template, { total: totalSeconds(shotlist) }));
+  }
+  return { shotlist, errors, warnings: [...v.warnings, ...style.warnings], info: v.info, style, template };
+}
+const shotlistEndCard = (raw, st) => (raw && raw.cut && raw.cut.endCard !== undefined ? !!raw.cut.endCard : st.endCard.enabled);
+
+/** Loads, validates and normalizes, with the style applied. Throws a PushreelError with every problem listed. */
+export function loadShotlist(file, projectDir, o = {}) {
   if (!existsSync(file)) throw E.noShotlist(file);
   const raw = readJson(file);
   if (raw === null) throw E.invalidShotlist([`${file} is not valid JSON.`]);
-  const { errors, warnings, info } = validate(raw);
-  if (errors.length) throw E.invalidShotlist(errors);
-  return { shotlist: normalize(raw), warnings, info };
+  const r = prepareShotlist(raw, projectDir, o);
+  if (r.errors.length) throw E.invalidShotlist(r.errors);
+  return r;
 }
 
 const words = (s) => String(s || '').toLowerCase().normalize('NFC').replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean);

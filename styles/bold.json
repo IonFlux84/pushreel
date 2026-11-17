@@ -1,0 +1,23 @@
+{
+  "$schema": "../docs/style.schema.json",
+  "name": "bold",
+  "description": "Pushreel's own look and the default: heavy condensed type on an ink box, the stressed word on volt, a hard volt shadow on the cover.",
+  "captions": {
+    "font": "Sofia Sans Condensed", "weight": 800, "size": 74,
+    "color": "#ffffff", "background": "#0e0a1f",
+    "highlight": "#d7ff1f", "highlightText": "auto", "highlightStyle": "box",
+    "uppercase": false, "position": "bottom", "radius": 16, "shadow": "none", "border": "none"
+  },
+  "endCard": {
+    "enabled": true, "background": "#0e0a1f", "color": "auto", "accent": "auto",
+    "font": "Sofia Sans Condensed", "textFont": "Sofia Sans",
+    "logo": null, "text": null, "cta": null, "tagline": true, "duration": 2
+  },
+  "cover": {
+    "scene": null, "font": "Sofia Sans Condensed", "background": "#0e0a1f", "color": "#ffffff", "accent": "#d7ff1f",
+    "uppercase": false, "radius": 24, "shadow": "hard", "logo": null
+  },
+  "motion": { "zoom": 1.4, "cursor": "arrow", "clickColor": "#ff2a8a", "scrollSpeed": 1 },
+  "watermark": { "enabled": false, "logo": null, "corner": "top-right", "size": 120, "opacity": 0.9 },
+  "intro": { "enabled": false, "text": null, "logo": null, "background": "#0e0a1f", "color": "auto", "duration": 1.2 }
+}

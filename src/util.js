@@ -27,6 +27,7 @@ export function paths(projectDir) {
     session: join(state, 'session.json'),
     exploreSession: join(state, 'explore-session.json'),
     consent: join(state, 'consent.json'),
+    choice: join(state, 'choice.json'),
     stills: join(state, 'stills'),
     raw: join(run, 'raw'),
     cut: join(run, 'cut'),

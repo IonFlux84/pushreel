@@ -1,0 +1,13 @@
+{
+  "name": "feature",
+  "description": "One feature as before and after: how it was, then what the feature changes.",
+  "slots": [
+    { "id": "before", "min": 1, "max": 2, "brief": "The situation before the feature: the empty state, the old way, the problem on screen. Caption: the problem in the viewer's words." },
+    { "id": "after", "min": 1, "max": 2, "brief": "The feature doing its job: the click or the typing that solves it, and the result. Caption: what changed." }
+  ],
+  "rules": {
+    "captions": { "maxWords": 8, "noEmoji": true },
+    "length": { "total": [10, 30], "scene": [3, 10] },
+    "posts": { "tone": "Show the change. One sentence on the problem, one on the fix.", "hashtags": { "max": 3 } }
+  }
+}

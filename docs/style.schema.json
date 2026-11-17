@@ -1,0 +1,457 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/IonFlux84/pushreel/main/docs/style.schema.json",
+  "title": "Pushreel style (pushreel.style.json)",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "description": "For library styles: the name, same as the file name."
+    },
+    "description": {
+      "type": "string"
+    },
+    "extends": {
+      "type": "string",
+      "description": "The style this one starts from: clean, bold, neon or one of yours. Default: bold."
+    },
+    "template": {
+      "type": "string",
+      "description": "The story template /pushreel uses in this project when none is passed: launch, feature, changelog or one of yours."
+    },
+    "rules": {
+      "type": "object",
+      "description": "Rules for the agent, laid over the template's rules (docs/STYLES.md, \"Rules\")."
+    },
+    "captions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "font": {
+          "description": "A bundled font by name, or a .ttf/.otf/.woff2 file inside the project.",
+          "anyOf": [
+            {
+              "enum": [
+                "Sofia Sans",
+                "Sofia Sans Condensed",
+                "Spline Sans Mono"
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "\\.(ttf|otf|woff2)$"
+            }
+          ]
+        },
+        "weight": {
+          "description": "Font weight. Bundled fonts: Sofia Sans 400 to 800, Sofia Sans Condensed 600 to 900, Spline Sans Mono 400 to 700.",
+          "type": "integer",
+          "minimum": 400,
+          "maximum": 900
+        },
+        "size": {
+          "description": "Type size in px of the 1080×1920 frame. Long captions get smaller by themselves.",
+          "type": "integer",
+          "minimum": 44,
+          "maximum": 110
+        },
+        "color": {
+          "description": "Text colour.",
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+        },
+        "background": {
+          "description": "Box colour; #rrggbbaa for a see-through box.",
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+        },
+        "highlight": {
+          "description": "Colour of the stressed word (the longest one), or \"none\".",
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+            },
+            {
+              "const": "none"
+            }
+          ]
+        },
+        "highlightText": {
+          "description": "Text colour of the stressed word in a \"box\" highlight; \"auto\" picks black or white.",
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+            },
+            {
+              "const": "auto"
+            }
+          ]
+        },
+        "highlightStyle": {
+          "description": "\"box\": the word on a coloured box. \"text\": the word in the colour.",
+          "enum": [
+            "box",
+            "text"
+          ]
+        },
+        "uppercase": {
+          "description": "Upper-case captions.",
+          "type": "boolean"
+        },
+        "position": {
+          "description": "Where the caption starts. It still moves off the clicked element, headings and pictures, inside the platform's safe area. \"auto\": the end with less on it.",
+          "enum": [
+            "bottom",
+            "top",
+            "auto"
+          ]
+        },
+        "radius": {
+          "description": "Corner radius of the box in px.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60
+        },
+        "shadow": {
+          "description": "\"hard\" and \"glow\" use the highlight colour.",
+          "enum": [
+            "none",
+            "soft",
+            "hard",
+            "glow"
+          ]
+        },
+        "border": {
+          "description": "A 4 px edge around the box, or \"none\".",
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+            },
+            {
+              "const": "none"
+            }
+          ]
+        }
+      }
+    },
+    "endCard": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "Show the end card.",
+          "type": "boolean"
+        },
+        "background": {
+          "description": "Background colour.",
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+        },
+        "color": {
+          "description": "Text colour; \"auto\" picks black or white for the background.",
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+            },
+            {
+              "const": "auto"
+            }
+          ]
+        },
+        "accent": {
+          "description": "Colour of the address pill; \"auto\" uses the text colour.",
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+            },
+            {
+              "const": "auto"
+            }
+          ]
+        },
+        "font": {
+          "description": "Font of the name.",
+          "anyOf": [
+            {
+              "enum": [
+                "Sofia Sans",
+                "Sofia Sans Condensed",
+                "Spline Sans Mono"
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "\\.(ttf|otf|woff2)$"
+            }
+          ]
+        },
+        "textFont": {
+          "description": "Font of the address and the tagline.",
+          "anyOf": [
+            {
+              "enum": [
+                "Sofia Sans",
+                "Sofia Sans Condensed",
+                "Spline Sans Mono"
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "\\.(ttf|otf|woff2)$"
+            }
+          ]
+        },
+        "logo": {
+          "description": "A PNG or SVG file inside the project, shown above the name; null for none.",
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "\\.(png|svg)$"
+            }
+          ]
+        },
+        "text": {
+          "description": "The big line; null = the app name from the shot list.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 40
+        },
+        "cta": {
+          "description": "The address or call to action in the pill; null = app.address from the shot list.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 60
+        },
+        "tagline": {
+          "description": "Show app.tagline under the pill.",
+          "type": "boolean"
+        },
+        "duration": {
+          "description": "Seconds.",
+          "type": "number",
+          "minimum": 1,
+          "maximum": 5
+        }
+      }
+    },
+    "cover": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "scene": {
+          "description": "Which scene the cover frame comes from; null = the first one. cover.scene in the shot list wins.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "font": {
+          "description": "Font of the cover headline.",
+          "anyOf": [
+            {
+              "enum": [
+                "Sofia Sans",
+                "Sofia Sans Condensed",
+                "Spline Sans Mono"
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "\\.(ttf|otf|woff2)$"
+            }
+          ]
+        },
+        "background": {
+          "description": "Headline box colour.",
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+        },
+        "color": {
+          "description": "Headline text colour.",
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+        },
+        "accent": {
+          "description": "Colour of a \"hard\" or \"glow\" shadow.",
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+        },
+        "uppercase": {
+          "description": "Upper-case headline.",
+          "type": "boolean"
+        },
+        "radius": {
+          "description": "Corner radius in px.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60
+        },
+        "shadow": {
+          "description": "Shadow of the headline box.",
+          "enum": [
+            "none",
+            "soft",
+            "hard",
+            "glow"
+          ]
+        },
+        "logo": {
+          "description": "A PNG or SVG file inside the project, shown on top of the headline; null for none.",
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "\\.(png|svg)$"
+            }
+          ]
+        }
+      }
+    },
+    "motion": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "zoom": {
+          "description": "Click zoom factor; 1 = no zoom. cut.zoom in the shot list wins.",
+          "type": "number",
+          "minimum": 1,
+          "maximum": 2.5
+        },
+        "cursor": {
+          "description": "The drawn pointer. Changing it records the scenes again.",
+          "enum": [
+            "arrow",
+            "dot",
+            "none"
+          ]
+        },
+        "clickColor": {
+          "description": "Colour of the ring drawn on every click. Changing it records the scenes again.",
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+        },
+        "scrollSpeed": {
+          "description": "Scroll speed; 2 = twice as fast. Changing it records the scenes again.",
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 2
+        }
+      }
+    },
+    "watermark": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "Your own logo in a corner of every scene (not on the end card). Off by default.",
+          "type": "boolean"
+        },
+        "logo": {
+          "description": "PNG or SVG inside the project.",
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "\\.(png|svg)$"
+            }
+          ]
+        },
+        "corner": {
+          "description": "Corner of the platform's safe area.",
+          "enum": [
+            "top-left",
+            "top-right",
+            "bottom-left",
+            "bottom-right"
+          ]
+        },
+        "size": {
+          "description": "Width in px (the height follows).",
+          "type": "integer",
+          "minimum": 48,
+          "maximum": 260
+        },
+        "opacity": {
+          "description": "Opacity.",
+          "type": "number",
+          "minimum": 0.2,
+          "maximum": 1
+        }
+      }
+    },
+    "intro": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "A card before the first scene. Off by default.",
+          "type": "boolean"
+        },
+        "text": {
+          "description": "Its line; null = the cover headline, else the app name.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 40
+        },
+        "logo": {
+          "description": "PNG or SVG inside the project; null for none.",
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "\\.(png|svg)$"
+            }
+          ]
+        },
+        "background": {
+          "description": "Background colour.",
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+        },
+        "color": {
+          "description": "Text colour; \"auto\" picks black or white.",
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+            },
+            {
+              "const": "auto"
+            }
+          ]
+        },
+        "duration": {
+          "description": "Seconds.",
+          "type": "number",
+          "minimum": 0.8,
+          "maximum": 3
+        }
+      }
+    }
+  }
+}

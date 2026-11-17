@@ -78,7 +78,7 @@ async function recordOnce(ctx, vp, shotlist, scene, ctxState, opts) {
   page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text().slice(0, 300)); });
   const frameDir = join(dirs.raw, `scene-${scene.id}.frames`);
   rmSync(frameDir, { recursive: true, force: true });
-  const state = { vp, mult, baseUrl, sceneId: scene.id, attempt, creds: null, mouse: null, events: { segments: [], clicks: [], scrolls: [] }, now: () => 0 };
+  const state = { vp, mult, baseUrl, sceneId: scene.id, attempt, creds: null, mouse: null, scrollSpeed: (shotlist.motion && shotlist.motion.scrollSpeed) || 1, events: { segments: [], clicks: [], scrolls: [] }, now: () => 0 };
   let cap = null;
   try {
     const url = abs(baseUrl, scene.url);
@@ -190,7 +190,8 @@ export async function recordScenes(o) {
   const key = sessionKey({ prepare, authSavedAt: auth ? auth.savedAt : null, baseUrl });
   const kept = usableSession(p.session, key);
   const { browser, vp } = await launch(shotlist.viewport.width);
-  const ctxOpts = { cursor: shotlist.cursor, colorScheme: shotlist.colorScheme || 'light' };
+  const m = shotlist.motion || {};
+  const ctxOpts = { cursor: shotlist.cursor, cursorKind: m.cursor, clickColor: m.clickColor, colorScheme: shotlist.colorScheme || 'light' };
   const lanes = {}; // lane name → { ctx, state: { storage, auth, signedIn, savedSignedIn } }
   const done = [];
   const save = async (name) => { const l = lanes[name]; l.state.storage = await l.ctx.storageState(); l.state.savedSignedIn = l.state.signedIn; saveSession(p.session, name, l.state.storage, { baseUrl, key, signedIn: l.state.signedIn }); };

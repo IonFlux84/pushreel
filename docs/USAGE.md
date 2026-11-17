@@ -21,6 +21,21 @@ while the plugin is enabled.
 A complete example shot list: [docs/example-shotlist.json](example-shotlist.json). The format
 is described in [docs/ARCHITECTURE.md](ARCHITECTURE.md).
 
+## Styles and templates
+
+```bash
+pushreel style init                          # read your running app, write pushreel.style.json
+pushreel style set captions.size=68 endCard.cta="Try it free"
+pushreel style show                          # every value of the run's style and where it comes from
+pushreel run --style neon --template launch  # for this run only
+pushreel rerender --style clean              # the same footage in another look, no model
+```
+
+`pushreel.style.json` belongs in Git: it is your brand, and every run in the project uses it. Your own styles for
+all projects go into `~/.pushreel/styles/<name>.json`, your own templates into `~/.pushreel/templates/`. A new
+pointer or scroll speed records the scenes again; every other style change is drawn on the saved footage. All of
+it: [docs/STYLES.md](STYLES.md).
+
 ## Logins and consent banners
 
 **Showing what is behind a login.** Two ways, by how your app signs people in:
@@ -61,6 +76,8 @@ Logins with 2FA or a captcha on every visit cannot be recorded. All of it in det
 | `pushreel-out/<date>-<app>/` | the finished files. A new run gets a new folder (`…-2`, `…-3`); `rerender` and `resume` write into their run's folder | yes |
 | `~/.pushreel/license.json` | the activation: key, activation id, machine name, dates | run `pushreel deactivate` instead of deleting it, so the key's place is freed |
 | `~/.pushreel/config.json` | models you chose "don't ask again" for; optional Dodo mode | yes |
+| `pushreel.style.json` (project root) | your style, from `style init`, `style set` or the Studio | keep it and commit it |
+| `~/.pushreel/styles/`, `~/.pushreel/templates/` | your own styles and templates, if you make any | yes |
 
 Pushreel writes nothing into `~/.claude`. `PUSHREEL_HOME` moves `~/.pushreel` somewhere else.
 

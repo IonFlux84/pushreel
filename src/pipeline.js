@@ -10,13 +10,15 @@ import { recordScenes, recorded, MAX_TRIES } from './record.js';
 import { cutAll, exportAll, copyExtras, requireFfmpeg } from './cut.js';
 import { PLATFORMS } from './presets.js';
 import { E, PushreelError } from './errors.js';
+import { styleLine } from './style.js';
 
 export const readRun = (dir) => readJson(paths(dir).runJson);
 
 /**
  * Runs the pipeline.
  * @param {string} dir project directory
- * @param {object} o { mode: 'fresh' | 'resume' | 'rerender', skip?: number[], url?: string, shotlistFile?: string, say?: (line) => void }
+ * @param {object} o { mode: 'fresh' | 'resume' | 'rerender', skip?: number[], url?: string, shotlistFile?: string, say?: (line) => void,
+ *   style?: string, template?: string, noProjectStyle?: boolean }  --style, --template and --no-project-style of this command
  * @returns {Promise<{ status: 'done' | 'paused', run: object }>}
  */
 export async function pipeline(dir, o = {}) {
@@ -28,7 +30,7 @@ export async function pipeline(dir, o = {}) {
   requireFfmpeg();
 
   if (o.shotlistFile && o.shotlistFile !== p.shotlist) { ensureDir(p.state); copyFileSync(o.shotlistFile, p.shotlist); }
-  const { shotlist, warnings, info } = loadShotlist(p.shotlist);
+  const { shotlist, warnings, info, style, template } = loadShotlist(p.shotlist, dir, { style: o.style, template: o.template, noProjectStyle: o.noProjectStyle });
   const dirs = { raw: p.raw, cut: p.cut, failed: p.failed };
 
   if (mode === 'fresh') { rmSync(p.run, { recursive: true, force: true }); }
@@ -49,6 +51,8 @@ export async function pipeline(dir, o = {}) {
     app: { name: shotlist.app.name, slug: shotlist.app.slug }, baseUrl: (prev && mode !== 'fresh' && prev.baseUrl) || null, userUrl: o.url || (prev && mode !== 'fresh' && prev.userUrl) || null, appStartedByPushreel: !!appInfo(dir), appStopped: false,
     skip, error: null, outDir: null, files: [], stats: (prev && mode !== 'fresh' && prev.stats) || { retries: 0 }, elapsed: (prev && mode === 'resume' && prev.elapsed) || 0,
     licence: licence.devOnly ? 'dev licence' : 'licensed',
+    style: { line: styleLine(style), base: style.base, baseFrom: style.baseFrom, layers: style.layers.map((l) => ({ label: l.label, kind: l.kind })) },
+    template: template.name ? { name: template.name, from: template.from, kind: template.kind, rulesFrom: template.rulesFrom } : template.rulesFrom.length ? { name: null, rulesFrom: template.rulesFrom } : null,
     scenes: shotlist.scenes.map((s) => ({ id: s.id, title: s.title, url: s.url, duration: s.duration, status: !s.include ? 'off' : skip.includes(s.id) ? 'skipped' : recorded(dirs, shotlist, s) ? 'recorded' : 'waiting' })),
     steps: [],
   };
@@ -74,6 +78,8 @@ export async function pipeline(dir, o = {}) {
   step('extras', 'Cover and post texts', {});
   step('stopapp', 'Stop the app', {});
   log(`--- pushreel ${mode} · ${shotlist.app.name} · ${included.length} scenes · targets ${shotlist.targets.join(', ')} ---`);
+  emit(`● Style: ${styleLine(style)}`);
+  emit(`● Template: ${template.name ? `${template.name} (${template.kind}), chosen by ${template.from}` : 'none'}${template.rulesFrom.length ? `; rules from ${template.rulesFrom.join(' + ')}` : ''}`);
   for (const w of warnings) emit(`! ${w}`);
   for (const w of info) emit(`· ${w}`);
 
@@ -153,7 +159,7 @@ export async function pipeline(dir, o = {}) {
     run.outDir = relative(p.root, outDir); save();
     emit('● Exporting');
     const files = await exportAll({
-      dirs, outDir, shotlist, scenes: included, cut,
+      dirs, outDir, shotlist, scenes: included, cut, projectDir: dir,
       onEvent: (e) => {
         if (e.type === 'captions') {
           step('captions', 'Captions', { status: 'done', note: shotlist.cut.captions ? `${e.count} ${e.count === 1 ? 'caption' : 'captions'} burned in${e.outside.length ? `, outside the safe area: ${e.outside.join('; ')}` : ', all inside the safe areas'}` : 'Captions off' });

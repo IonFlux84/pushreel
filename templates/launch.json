@@ -1,0 +1,14 @@
+{
+  "name": "launch",
+  "description": "A launch post: a hook, three features, then the price or the next step.",
+  "slots": [
+    { "id": "hook", "min": 1, "max": 1, "brief": "The promise or the problem, in one screen: what the app gives you. Usually the start page or the main screen. Caption: the benefit, not the app's name." },
+    { "id": "feature", "min": 3, "max": 3, "brief": "One feature per scene, each with one action the viewer can follow (a click, typing, a scroll). Caption: what the viewer gets from it." },
+    { "id": "cta", "min": 1, "max": 1, "brief": "The price, a plan or the sign-up screen. Caption: the price or the next step. If the app shows no price, its sign-up or start screen." }
+  ],
+  "rules": {
+    "captions": { "maxWords": 7, "person": "you", "noEmoji": true, "bannedWords": ["revolutionary", "game-changer", "game changer", "seamless", "seamlessly", "unleash", "supercharge", "effortless", "effortlessly", "cutting-edge"] },
+    "length": { "total": [20, 45], "scene": [3, 9] },
+    "posts": { "tone": "Plain and concrete: what it does and for whom. No hype.", "noEmoji": true, "hashtags": { "max": 3 } }
+  }
+}

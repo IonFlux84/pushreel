@@ -1,7 +1,7 @@
 ---
 name: pushreel
 description: Record the user's running web app in 9:16 and export a YouTube Short, an Instagram Reel and a TikTok with burned-in captions, a cover image and post texts. Use when the user types /pushreel or asks for a short vertical demo video, reel, short or TikTok of their app.
-argument-hint: "[url] [--yes] | login [url] | logout | resume [--skip 3,4] | cancel | rerender | record | status | studio | setup | activate <key> | licence | deactivate | config"
+argument-hint: "[url] [--yes] [--style <name>] [--template <name>] | style init|list|show [name] | template list | login [url] | logout | resume [--skip 3,4] | cancel | rerender [--style <name>] | record | status | studio | setup | activate <key> | licence | deactivate | config"
 allowed-tools: Bash(pushreel *), Bash(pushreel), Read, Glob, Grep, Write, Edit
 ---
 
@@ -55,14 +55,17 @@ Look at the arguments first.
 | `rerender` | Run `pushreel rerender`. Go to step 5. Use it after captions, lengths, included scenes or targets changed. |
 | `record` | Run `pushreel run`. It records the saved shot list again, for example after the UI changed. Go to step 5. |
 | `studio` | Start `pushreel studio --no-open` with `run_in_background: true` and tell the user to open http://localhost:4317. Stop. |
-| empty, a URL, and/or `--yes` | The full flow below. A URL is the address of the running app. `--yes` skips the confirmation in step 3. |
+| `style init` (optional URL) | Run `pushreel style init` (with the URL, if given). Show what it found and the file it wrote, word for word, and ask: "Is anything wrong? Tell me, or edit it in the Studio (/pushreel studio → Style)." For each correction run `pushreel style set <key>=<value>` (one call with all of them) and show the answer. Never edit `pushreel.style.json` with Write or Edit. Stop. |
+| `style list`, `style show` (optional name), `style set …`, `template list`, `template show <name>` | Run the same `pushreel` command and show the answer. Stop. |
+| `rerender --style <name>` | Run `pushreel rerender --style <name>`. Go to step 5. |
+| empty, a URL, `--yes`, `--style <name>`, `--template <name>` | The full flow below. A URL is the address of the running app. `--yes` skips the confirmation in step 3. |
 
-`resume`, `cancel`, `rerender`, `record`, `login` and `logout` are fixed code. Do not read the project or explore for them. They cost almost no tokens, and that is the point.
+`resume`, `cancel`, `rerender`, `record`, `login`, `logout` and the `style` and `template` commands are fixed code. Do not read the project or explore for them. They cost almost no tokens, and that is the point.
 
 ## 1. Begin: one call
 
-Run `pushreel begin --session ${CLAUDE_SESSION_ID}`, with the URL if the user passed one and with `--yes`
-if the arguments contain `--yes`. It checks the machine and the licence, starts the cost tracking, finds the
+Run `pushreel begin --session ${CLAUDE_SESSION_ID}`, with the URL if the user passed one, with `--yes`
+if the arguments contain `--yes`, and with `--style <name>` and `--template <name>` exactly as the user passed them. It checks the machine and the licence, starts the cost tracking, finds the
 app (or starts it with the project's own command; the pipeline stops it again at the end) and prints the
 model note.
 
@@ -87,6 +90,8 @@ model note.
     - "stop", "switch": say "Nothing was explored or recorded. Switch with /model, then run /pushreel again." and stop.
     This is a note, never a gate: any answer that is not "stop" means continue.
 - The `Login:` line says whether a saved session exists. Remember it for step 2.
+- The `Style:` line and, if there is one, the `Template:` block are for you; see "Styles and templates" below.
+  A line marked `✗` there (an unknown style or template, a broken `pushreel.style.json`): show it and stop.
 
 ## 2. Pass 1: explore (nothing is recorded)
 
@@ -133,6 +138,22 @@ Goal: 3 to 5 scenes that show what the app does, in 20 to 40 seconds.
 6. Leave out screens that look the same in every app (settings, profile, legal) unless they are the point
    of the product.
 
+## Styles and templates
+
+The look (fonts, colours, end card, cover, intro, corner logo, pointer, zoom) is a **style**, applied by fixed
+code. If the project has `pushreel.style.json`, every run uses it: do not ask about colours or fonts, and do
+not set `app.brandColor` or `"style"` in the shot list. Without it, set `app.brandColor` to the `brand.color`
+of the first explore-shot report (leave it out if that is null); never copy a colour from an example. A
+`--style <name>` of the user is already remembered by `begin`; write `"style": "<name>"` into the shot list too.
+
+A **template** (`--template launch`, or `"template"` in `pushreel.style.json`) is a story with slots. `begin`
+prints them with the rules: fill every slot in the given order, one scene per slot, put `"slot": "<id>"` on
+every included scene and `"template": "<name>"` at the top of the shot list. Explore the screens that fit the
+slots (for `launch`: a hook screen, three features, the pricing or sign-up page). Follow the rules for
+captions (words, person, language, banned words, no emoji), paths, lengths and post texts. `validate-shotlist`
+turns every broken measurable rule into an error: fix them all before you run. If a slot cannot be filled
+(the app has no pricing page), use the closest screen and say so in one line at the end; never invent it.
+
 ## 3. Shot list and post texts: one file, written once
 
 Write `.pushreel/shotlist.json` with the Write tool, complete, including `posts`:
@@ -140,10 +161,9 @@ Write `.pushreel/shotlist.json` with the Write tool, complete, including `posts`
 ```json
 {
   "version": 1,
-  "app": { "name": "Tiny Wins", "slug": "tinywins", "address": "tinywins.app", "tagline": "Four habits. One tap each.", "brandColor": "#5b3df5" },
+  "app": { "name": "Tiny Wins", "slug": "tinywins", "address": "tinywins.app", "tagline": "Four habits. One tap each.", "brandColor": "<brand.color from explore-shot>" },
   "viewport": { "width": 360 },
   "targets": ["short", "reel", "tiktok"],
-  "cut": { "zoom": 1.4, "removeWaitsOver": 0.6, "captions": true, "endCard": true },
   "prepare": [ { "do": "click", "text": "Reject all" } ],
   "cover": { "scene": 1, "headline": "Four habits, one tap" },
   "scenes": [
@@ -167,7 +187,8 @@ Rules for scenes
 - **A caption adds something the picture does not say.** Never repeat a heading that is on screen in that scene (the page's headline, a card title): the viewer reads it twice. Say what the viewer gets from the screen, or what the action just did ("One link for your whole setup", not the page's own "Zeig, womit du wirfst."). The validator warns when a caption repeats a heading that exploring saw on the page.
 - `requiresLogin: true` for scenes behind the login: they are recorded signed in. All other scenes are recorded as a visitor.
 - `cover`: choose it on purpose. `scene` is the scene whose opening picture shows the product best at a glance (usually the screen with the most recognisable content, not a form and not a list of text). The cover is that scene's settled page before its first click; `"at": 3.5` picks another second of the scene, `"at": "end"` its last frame. `headline`: at most 4 words, and not the same words as the page's own headline.
-- `app.brandColor` is the background of the end card: the app's main colour as `#rrggbb`. `app.address` is the public address from the README, not localhost. `app.slug`: a-z, 0-9 and hyphens.
+- `app.brandColor`: see "Styles and templates" (left out when the project has `pushreel.style.json`). `app.address` is the public address from the README, not localhost. `app.slug`: a-z, 0-9 and hyphens. Leave `cut`, `cursor` and `style` out: the style decides them.
+- With a template: `"template": "<name>"` and a `"slot"` on every included scene.
 - A candidate you leave out can stay in the list with `"include": false`.
 
 Post texts (`posts`), written from what you know about the product and the scenes, in the user's voice,
@@ -221,6 +242,6 @@ cut, the exported files and, at the end, a paste block with the files and the co
 
 - Never upload, post or send the videos or the project anywhere. Pushreel has no upload.
 - Never write a password, token or the value of `PUSHREEL_LOGIN` into a file or into the chat. Never open, print or copy `.pushreel/auth.json` or `.pushreel/session.json`: they hold session cookies.
-- Do not change the user's source code. You write only inside `.pushreel/`.
+- Do not change the user's source code. You write only inside `.pushreel/`. `pushreel.style.json` is changed only by `pushreel style init` and `pushreel style set`.
 - Do not start or kill the user's dev server yourself. `begin`, `run`, `cancel` and `stop-app` do that.
 - `.pushreel/` (state, raw footage, the saved login) and `pushreel-out/` (videos) do not belong in Git. If the project has a `.gitignore` without them, suggest adding both lines; do not edit it unasked.

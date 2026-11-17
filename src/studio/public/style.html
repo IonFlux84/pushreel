@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pushreel · Style</title>
+<link rel="icon" href="/favicon.svg">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body data-page="style">
+<header class="bar">
+  <a class="brand" href="/"><span class="dot"></span>Pushreel</a>
+  <span class="crumb">/ <b id="crumb"></b></span>
+  <span class="slate loc">localhost:4317 · runs only on this machine</span>
+  <span class="grow"></span>
+  <nav class="deck" aria-label="Screens">
+    <a href="/"><i>01</i> Studio</a>
+    <a href="/style" aria-current="page"><i>02</i> Style</a>
+    <a href="/result"><i>03</i> Result</a>
+    <a href="/recovery" id="nav-recovery" hidden><i>04</i> Recovery</a>
+  </nav>
+</header>
+
+<main class="sty">
+  <h1 class="vh">Style of the videos in this project</h1>
+  <section class="sty-form" aria-labelledby="sty-form-title">
+    <div class="pane-head"><h2 id="sty-form-title">Style</h2><span class="slate" id="sty-file">pushreel.style.json</span></div>
+    <div class="sty-body">
+      <p class="sty-line" id="sty-line"></p>
+      <label class="sty-base"><span>Starts from</span><select id="sty-base"></select></label>
+      <div id="sty-groups"></div>
+    </div>
+  </section>
+
+  <section class="sty-stage" aria-labelledby="sty-prev-title">
+    <div class="pane-head"><h2 id="sty-prev-title">Preview</h2><span class="slate" id="sty-frame-note"></span></div>
+    <div class="stage-top">
+      <div class="seg" id="sty-platforms" role="radiogroup" aria-label="Caption preview platform">
+        <button type="button" role="radio" data-p="short" aria-checked="true"><span class="glyph" data-glyph="short"></span>Short</button>
+        <button type="button" role="radio" data-p="reel" aria-checked="false"><span class="glyph" data-glyph="reel"></span>Reel</button>
+        <button type="button" role="radio" data-p="tiktok" aria-checked="false"><span class="glyph" data-glyph="tiktok"></span>TikTok</button>
+      </div>
+      <label class="sty-text"><span class="vh">Caption text for the preview</span><input id="sty-text" type="text" maxlength="120" placeholder="Caption text for the preview"></label>
+    </div>
+    <div class="sty-phones" id="sty-phones"></div>
+    <p class="sty-note">These are the renderer's own pages, drawn on a real frame of this project. Where a caption sits moves by scene (it keeps off the clicked element, headings and pictures); here it is at its home position.</p>
+  </section>
+
+  <aside class="rail sty-rail" aria-labelledby="sty-rail-title">
+    <div class="pane-head"><h2 id="sty-rail-title">Save</h2><span class="slate" id="sty-dirty">saved</span></div>
+    <div class="rail-body">
+      <ul class="sty-msgs" id="sty-msgs" role="status" aria-live="polite"></ul>
+      <button type="button" class="btn block" id="sty-save">Save to pushreel.style.json</button>
+      <p class="sty-small">Commit this file: every run in this project uses it, also <code>/pushreel</code> in Claude Code.</p>
+      <button type="button" class="btn primary block xl" id="sty-render">Save and re-render</button>
+      <p class="sty-small" id="sty-render-note">Fixed code, no model, 0 tokens. Captions, cards and cover are drawn again from the recorded footage. A new pointer or scroll speed records the scenes again.</p>
+      <p class="sty-small">Font files and logos are read from inside this project only. You are responsible for the licence of a font file you add.</p>
+    </div>
+  </aside>
+</main>
+<script src="/studio.js"></script>
+</body>
+</html>

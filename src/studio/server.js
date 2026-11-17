@@ -5,7 +5,9 @@ import { createReadStream, existsSync, statSync, readFileSync, writeFileSync } f
 import { join, extname, basename, resolve, sep } from 'node:path';
 import { spawn } from 'node:child_process';
 import { paths, readJson, writeJson, PLUGIN_ROOT, VERSION, isAlive, ensureDir, readEnvFiles } from '../util.js';
-import { validate, normalize, sceneHash, totalSeconds } from '../shotlist.js';
+import { validate, normalize, sceneHash, totalSeconds, prepareShotlist } from '../shotlist.js';
+import { resolveStyle, styleLine, readProjectStyle, projectStyleFile, projectFile, validateStyle, SPEC, BUNDLED_FONTS, builtinNames, libraryNames, PROJECT_STYLE, FONT_EXT, IMAGE_EXT } from '../style.js';
+import { captionPage, endCardPage, coverPage, introPage } from '../render.js';
 import { PLATFORMS, PLATFORM_KEYS, FRAME, END_CARD_SECONDS, LAST_CHECKED } from '../presets.js';
 import { status as licenceStatus } from '../license.js';
 import { appInfo, probe, inspectProject } from '../detect.js';
@@ -17,7 +19,26 @@ import { captionsMd } from '../cut.js';
 
 const PUBLIC = join(PLUGIN_ROOT, 'src', 'studio', 'public');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.png': 'image/png', '.jpg': 'image/jpeg', '.mp4': 'video/mp4', '.md': 'text/markdown; charset=utf-8', '.json': 'application/json', '.log': 'text/plain; charset=utf-8' };
-const PAGES = { '/': 'studio.html', '/studio': 'studio.html', '/result': 'result.html', '/recovery': 'recovery.html' };
+const PAGES = { '/': 'studio.html', '/studio': 'studio.html', '/style': 'style.html', '/result': 'result.html', '/recovery': 'recovery.html' };
+const TYPES_ASSET = { '.ttf': 'font/ttf', '.otf': 'font/otf' };
+/** The Style screen's pages are the renderer's own pages, with addresses this server answers. */
+const studioUrls = { font: (name) => `/fonts/${name}`, file: (abs, rel) => `/media/project/${rel.split('/').map(encodeURIComponent).join('/')}` };
+/** A real frame of the current run for the Style previews: the cover frame of the last cut, else a still. */
+function previewFrame(dir) {
+  const p = paths(dir), cands = [join(p.cut, 'cover-frame.png'), ...[1, 2, 3, 4, 5].map((i) => join(p.stills, `scene-${i}.png`))];
+  const f = cands.find((x) => existsSync(x));
+  return f ? { file: f, src: f.startsWith(p.cut) ? `/media/frame/cover-frame.png?v=${Math.round(statSync(f).mtimeMs)}` : `/media/stills/${basename(f)}?v=${Math.round(statSync(f).mtimeMs)}` } : null;
+}
+/** Style state for the Style screen: the resolved style, where each value comes from, and the project file. */
+function styleState(dir, draft) {
+  const raw = readJson(paths(dir).shotlist) || {}, proj = readProjectStyle(dir);
+  const r = resolveStyle(dir, { raw, ...(draft !== undefined ? { projectData: draft } : {}) });
+  return {
+    style: r.style, sources: r.sources, line: styleLine(r), errors: r.errors, warnings: r.warnings, base: r.base,
+    project: draft !== undefined ? draft : proj && proj.data ? proj.data : null, projectFile: PROJECT_STYLE, projectError: proj && proj.error ? proj.error : null,
+    spec: SPEC, fonts: Object.keys(BUNDLED_FONTS), builtins: builtinNames(), library: libraryNames(), frame: previewFrame(dir),
+  };
+}
 
 export async function buildState(dir) {
   const p = paths(dir), raw = readJson(p.shotlist), run = readRun(dir), app = appInfo(dir);
@@ -51,6 +72,8 @@ export async function buildState(dir) {
   // models the user chose not to be asked about again.
   const note = lastModelNote(dir), quiet = dontAskModels();
   state.model = note && note.model ? { id: note.model.id, name: note.model.name, kind: note.kind, usd: note.usd, recUsd: note.recUsd, ratio: note.ratio, note: note.note || '', headline: note.headline || '', at: note.at, dontAsk: quiet.includes(note.model.id) } : null;
+  // The style of the next run, with what it changes in the plan: end card length, intro card (src/style.js).
+  if (raw) { const pr = prepareShotlist(raw, dir); const st = pr.style.style; state.style = { line: styleLine(pr.style), errors: pr.style.errors, endSeconds: st.endCard ? st.endCard.duration : END_CARD_SECONDS, introSeconds: st.intro && st.intro.enabled ? st.intro.duration : 0, endCard: !!(st.endCard && st.endCard.enabled), look: st, template: pr.template.name }; if (pr.shotlist && state.shotlist) { state.shotlist.cut.zoom = pr.shotlist.cut.zoom; state.shotlist.cut.endCard = pr.shotlist.cut.endCard; } state.endCardSeconds = state.style.endSeconds; state.total = pr.shotlist ? totalSeconds(pr.shotlist, (run && run.status !== 'done' && run.skip) || []) : state.total; }
   state.loginSet = !!(process.env.PUSHREEL_LOGIN || readEnvFiles(dir).PUSHREEL_LOGIN) || existsSync(p.auth);
   state.outDir = run && run.outDir ? `./${run.outDir}/` : null;
   state.files = run && run.status === 'done' ? run.files.map((f) => ({ ...f, src: `/media/out/${f.name}?v=${encodeURIComponent(run.finishedAt || '')}` })) : [];
@@ -90,7 +113,7 @@ export async function startStudio(dir, { port = 4317, entry = join(PLUGIN_ROOT, 
   let lastSig = '';
   const timer = setInterval(() => {
     let sig = '';
-    for (const f of [p.runJson, p.shotlist, p.appJson, p.costJson]) { try { sig += statSync(f).mtimeMs + ';'; } catch { sig += '-;'; } }
+    for (const f of [p.runJson, p.shotlist, p.appJson, p.costJson, projectStyleFile(dir)]) { try { sig += statSync(f).mtimeMs + ';'; } catch { sig += '-;'; } }
     sig += child ? 'c' : '';
     if (sig !== lastSig) { lastSig = sig; push(); }
   }, 350);
@@ -129,6 +152,10 @@ export async function startStudio(dir, { port = 4317, entry = join(PLUGIN_ROOT, 
       if (req.method === 'PUT' && path === '/api/shotlist') {
         const body = await readBody(req), v = validate(body);
         if (v.errors.length) return send(res, 422, { ok: false, errors: v.errors, warnings: v.warnings });
+        // The Studio shows the style's zoom and end card in the shot list's switches. A value the file did not have
+        // and the user did not change is not written into it: the style keeps deciding it.
+        const before = readJson(p.shotlist) || {}, had = before.cut || {}, shown = prepareShotlist(before, dir).shotlist;
+        if (body.cut && shown) for (const k of ['zoom', 'endCard']) if (!(k in had) && JSON.stringify(body.cut[k]) === JSON.stringify(shown.cut[k])) delete body.cut[k];
         ensureDir(p.state); writeJson(p.shotlist, body);
         // keep captions.md in the finished folder in step with edited post texts
         const run = readRun(dir);
@@ -161,6 +188,43 @@ export async function startStudio(dir, { port = 4317, entry = join(PLUGIN_ROOT, 
         if (child) child.kill('SIGTERM');
         const r = await cancel(dir);
         return send(res, 200, { ok: true, ...r, state: await buildState(dir) });
+      }
+      if (req.method === 'GET' && path === '/api/style') return send(res, 200, styleState(dir));
+      if (req.method === 'POST' && path === '/api/style/preview') {
+        // The renderer's own pages for a draft of the project file: what the next render will look like.
+        const body = await readBody(req), draft = body.project && typeof body.project === 'object' && !Array.isArray(body.project) ? body.project : null;
+        const st = styleState(dir, draft), raw = readJson(p.shotlist) || {}, sl = raw.scenes ? normalize(raw) : null;
+        if (st.errors.length) return send(res, 200, { ok: false, ...st });
+        const o = { projectDir: dir, urls: studioUrls }, app = (sl && sl.app) || { name: basename(dir) };
+        const scene = sl && (sl.scenes.find((x) => x.include && x.caption) || sl.scenes[0]);
+        const text = typeof body.text === 'string' && body.text.trim() ? body.text.slice(0, 120) : (scene && scene.caption) || 'Every square is a day you showed up.';
+        const frame = st.frame ? st.frame.src : '', bg = frame ? `html, body { background: #0e0a1f url('${frame}') center / cover no-repeat; }` : 'html, body { background: #e6e8ef; }';
+        const platform = PLATFORM_KEYS.includes(body.platform) ? body.platform : 'short';
+        const headline = sl && sl.cover && typeof sl.cover.headline === 'string' ? sl.cover.headline : (scene && scene.caption) || '';
+        const pages = {
+          caption: captionPage(platform, text, st.style, o).replace('</style>', `${bg}</style>`),
+          endCard: endCardPage(app, st.style, o),
+          cover: coverPage(frame, headline, st.style, o),
+          ...(st.style.intro.enabled ? { intro: introPage(st.style.intro.text || headline || app.name, st.style, o) } : {}),
+        };
+        return send(res, 200, { ok: true, ...st, pages });
+      }
+      if (req.method === 'PUT' && path === '/api/style') {
+        const body = await readBody(req);
+        if (!body || typeof body !== 'object' || Array.isArray(body)) return send(res, 422, { ok: false, errors: ['Send the project style as one JSON object.'] });
+        const v = validateStyle(body, { label: PROJECT_STYLE, projectDir: dir });
+        if (v.errors.length) return send(res, 422, { ok: false, errors: v.errors, warnings: v.warnings });
+        writeFileSync(projectStyleFile(dir), JSON.stringify(body, null, 2) + '\n');
+        return send(res, 200, { ok: true, ...styleState(dir) });
+      }
+      if (req.method === 'GET' && path === '/media/frame/cover-frame.png') return sendFile(req, res, p.cut, 'cover-frame.png');
+      if (req.method === 'GET' && path.startsWith('/media/project/')) {
+        // Fonts and logos of the project, for the Style previews: only those file types, only inside the project.
+        const rel = path.slice('/media/project/'.length), ext = extname(rel).toLowerCase();
+        const f = projectFile(dir, rel, FONT_EXT.includes(ext) ? 'font' : 'image');
+        if (!(FONT_EXT.includes(ext) || IMAGE_EXT.includes(ext)) || f.problem) return send(res, 404, { error: 'not found' });
+        res.writeHead(200, { 'content-type': TYPES[ext] || TYPES_ASSET[ext] || 'application/octet-stream', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', ...(ext === '.svg' ? { 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; img-src data:" } : {}) });
+        return createReadStream(f.file).pipe(res);
       }
       if (req.method === 'GET' && path.startsWith('/media/stills/')) return sendFile(req, res, p.stills, path.slice('/media/stills/'.length));
       if (req.method === 'GET' && path.startsWith('/media/failed/')) return sendFile(req, res, p.failed, path.slice('/media/failed/'.length));

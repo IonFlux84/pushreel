@@ -12,6 +12,7 @@ import { paths, ensureDir, writeJson, readJson, round, sleep } from './util.js';
 import { PushreelError } from './errors.js';
 import { collectConsentCandidates, pickConsent } from './consent.js';
 import { readSaved, usableSession, saveSession, laneOf } from './session.js';
+import { collect as collectBrand, pickColor } from './brand.js';
 
 /**
  * @param {string} dir project
@@ -72,6 +73,8 @@ export async function exploreShots(dir, o) {
       report.clicks = state.events.clicks.map((c) => ({ x: round(c.x, 3), y: round(c.y, 3), w: round(c.w, 3), h: round(c.h, 3) }));
       report.consoleErrors = consoleErrors.slice(0, 5);
       report.page = await page.evaluate(describePage).catch(() => null);
+      // The app's own main colour, read from the first page: what "app.brandColor" gets (never an example's colour).
+      if (n === 0) { const b = await page.evaluate(collectBrand).catch(() => null), c = b && pickColor(b.colors); report.brand = c ? { color: c.hex, source: c.source } : { color: null, source: 'no brand colour found: leave "app.brandColor" out' }; }
       writeJson(join(p.stills, `${name}.json`), { url: shot.url, finalUrl: report.finalUrl, clicks: report.clicks, headings: (report.page && report.page.headings) || [], at: new Date().toISOString() });
       await page.close().catch(() => {});
       reports.push(report);

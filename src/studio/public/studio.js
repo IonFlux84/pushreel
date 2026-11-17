@@ -66,9 +66,16 @@
     var c = [0, 2, 4].map(function (i) { var v = parseInt(m[1].slice(i, i + 2), 16) / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
     return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] > 0.4 ? '#0e0a1f' : '#ffffff';
   }
-  function endCardHTML(app) {
-    var bg = /^#[0-9a-f]{6}$/i.test(app.brandColor || '') ? app.brandColor : '#0e0a1f', ink = inkOn(bg), pill = ink === '#ffffff' ? ['#fff', '#0e0a1f'] : ['#0e0a1f', '#fff'];
-    return '<div class="endcard" style="background:' + bg + ';color:' + ink + '"><b>' + esc(app.name) + '</b>' + (app.address ? '<span style="background:' + pill[0] + ';color:' + pill[1] + '">' + esc(app.address) + '</span>' : '') + (app.tagline ? '<small>' + esc(app.tagline) + '</small>' : '') + '</div>';
+  /* A quick sketch of the end card for the timeline preview; the Style screen shows the real one. */
+  function endCardHTML(app, look) {
+    var e = look && look.endCard, bg = e && /^#[0-9a-f]{6}/i.test(e.background) ? e.background.slice(0, 7) : /^#[0-9a-f]{6}$/i.test(app.brandColor || '') ? app.brandColor : '#0e0a1f';
+    var ink = e && /^#/.test(e.color) ? e.color.slice(0, 7) : inkOn(bg), acc = e && /^#/.test(e.accent) ? e.accent.slice(0, 7) : ink, pill = [acc, inkOn(acc)];
+    var text = (e && e.text) || app.name, cta = e && e.cta != null ? e.cta : app.address;
+    return '<div class="endcard" style="background:' + bg + ';color:' + ink + '"><b>' + esc(text) + '</b>' + (cta ? '<span style="background:' + pill[0] + ';color:' + pill[1] + '">' + esc(cta) + '</span>' : '') + (app.tagline && (!e || e.tagline) ? '<small>' + esc(app.tagline) + '</small>' : '') + '</div>';
+  }
+  function introHTML(app, look) {
+    var it = look.intro, bg = /^#[0-9a-f]{6}/i.test(it.background) ? it.background.slice(0, 7) : '#0e0a1f', ink = /^#/.test(it.color) ? it.color.slice(0, 7) : inkOn(bg);
+    return '<div class="endcard" style="background:' + bg + ';color:' + ink + '"><b>' + esc(it.text || app.name) + '</b></div>';
   }
 
   /* Overlays shared by all previews: click marks, safe area, caption. Positions come from the platform preset. */
@@ -170,7 +177,7 @@
       play: $('#play'), played: $('#played'), note: $('#stage-note'), tc: $('#tc'), tlMeta: $('#tl-meta'), info: $('#stage-info'), skip: $('#stage-skip'), targets: $('#targets'), notice: $('#notice'),
       est: $('#est-run'), sum: $('#go-sum'), go: $('#go'), views: { setup: $('#view-setup'), run: $('#view-run'), done: $('#view-done') }, railTitle: $('#rail-title'), railSlate: $('#rail-slate')
     };
-    var PK = ST.platformKeys, P = ST.platforms, END = ST.endCardSeconds;
+    var PK = ST.platformKeys, P = ST.platforms, END = ST.endCardSeconds, INTRO = (ST.style && ST.style.introSeconds) || 0, LOOK = ST.style && ST.style.look;
     var mountKey = null, video = null;
 
     if (!SL) {
@@ -189,11 +196,13 @@
     var segments = function () {
       if (videoMode()) {
         var v = ST.run.video, out0 = v.scenes.map(function (g) { var s = SL.scenes.filter(function (x) { return x.id === g.id; })[0]; return { s: s, id: g.id, start: g.start, dur: g.length }; });
+        if (v.intro) out0.unshift({ s: null, id: -2, start: 0, dur: v.intro.length });
         if (v.endCard) out0.push({ s: null, id: -1, start: v.endCard.start, dur: v.endCard.length });
         return out0;
       }
-      var t = 0, out = inc().map(function (s) { var g = { s: s, id: s.id, start: t, dur: s.duration }; t += s.duration; return g; });
+      var t = inc().length ? INTRO : 0, out = inc().map(function (s) { var g = { s: s, id: s.id, start: t, dur: s.duration }; t += s.duration; return g; });
       if (endLen()) out.push({ s: null, id: -1, start: t, dur: END });
+      if (t && INTRO && inc().length) out.unshift({ s: null, id: -2, start: 0, dur: INTRO });
       return out;
     };
     var total = function () { var g = segments(); return g.length ? g[g.length - 1].start + g[g.length - 1].dur : 0; };
@@ -281,7 +290,7 @@
       var g = peek ? { s: peek, id: peek.id, start: 0, dur: peek.duration, peek: true } : locate();
       if (!g) { el.screen.innerHTML = ''; mountKey = null; return; }
       var vm = videoMode() && !g.peek;
-      var key = vm ? 'video:' + S.platform : g.s ? 'still:' + g.id : 'end';
+      var key = vm ? 'video:' + S.platform : g.s ? 'still:' + g.id : g.id === -2 ? 'intro' : 'end';
       if (key !== mountKey) {
         mountKey = key; video = null;
         if (vm) {
@@ -291,7 +300,7 @@
         } else if (g.s) {
           var st = ST.stills[g.id];
           el.screen.innerHTML = (st ? '<img class="still" alt="" src="' + st.src + '">' : '<div class="nostill"><div><b>' + esc(g.s.title) + '</b>' + (ST.recorded[g.id] ? 'Recorded. The video shows after the next export.' : 'No still yet. Stills are taken while the agent explores.') + '</div></div>') + OVERLAYS;
-        } else el.screen.innerHTML = endCardHTML(SL.app) + OVERLAYS;
+        } else el.screen.innerHTML = (g.id === -2 && LOOK ? introHTML(SL.app, LOOK) : endCardHTML(SL.app, LOOK)) + OVERLAYS;
         setSafe(el.screen, ST, S.platform, S.safe);
       }
       var cap = $('.cap', el.screen), ring = $('.fx-ring', el.screen), zoom = $('.fx-zoom', el.screen), cur = $('.fx-cursor', el.screen);
@@ -316,7 +325,7 @@
       el.info.innerHTML = g.s
         ? '<span class="slate"><span class="dot' + (S.playing || S.view === 'run' ? ' live' : '') + '"></span><b>Scene ' + n + '</b></span><span class="slate">' + esc(g.s.url) + ' · ' + secs(g.dur) + '</span><span class="slate">' +
           (g.peek ? 'not in the video' : tc(g.start) + ' to ' + tc(g.start + g.dur)) + '</span>'
-        : '<span class="slate"><span class="dot"></span><b>End card</b></span><span class="slate">' + esc(SL.app.address || SL.app.name) + ' · ' + END + ' s</span>';
+        : '<span class="slate"><span class="dot"></span><b>' + (g.id === -2 ? 'Intro card' : 'End card') + '</b></span><span class="slate">' + esc(SL.app.address || SL.app.name) + ' · ' + (g.id === -2 ? INTRO : END) + ' s</span>';
       el.note.textContent = S.view === 'run' ? 'Recording now: fixed code replays shotlist.json.' : vm ? 'The exported ' + P[S.platform].name + '. Captions are burned in.' : g.s && ST.stills[g.id] ? 'Still from exploring. Video exists after recording.' : 'Preview of the plan. Video exists after recording.';
       var T = total();
       el.tc.innerHTML = tc(S.t) + ' <span>/ ' + tc(T) + '</span>';
@@ -332,7 +341,7 @@
       el.segs.innerHTML = segs.map(function (g) {
         return g.s
           ? '<button type="button" data-id="' + g.id + '" class="' + (g.id === sel ? 'sel' : '') + '" style="flex:' + g.dur + ' 1 0" title="' + esc(g.s.title) + '" aria-label="Scene ' + g.id + ', ' + esc(g.s.title) + ', ' + secs(g.dur) + '"><b>' + String(g.id).padStart(2, '0') + ' ' + esc(g.s.title) + '</b><small>' + secs(g.dur) + '</small></button>'
-          : '<button type="button" class="end" tabindex="-1" style="flex:' + g.dur + ' 1 0" aria-label="End card, ' + g.dur + ' seconds"><small>End</small></button>';
+          : '<button type="button" class="end" tabindex="-1" style="flex:' + g.dur + ' 1 0" aria-label="' + (g.id === -2 ? 'Intro card' : 'End card') + ', ' + g.dur + ' seconds"><small>' + (g.id === -2 ? 'Intro' : 'End') + '</small></button>';
       }).join('');
       var nclicks = 0;
       el.ticks.innerHTML = segs.filter(function (g) { return g.s; }).map(function (g) {
@@ -606,6 +615,132 @@
     subscribe(onState);
   }
 
+
+  /* ================= style ================= */
+  /* The Style screen edits a draft of pushreel.style.json. Every change asks the server for the renderer's own
+     pages (caption, end card, cover, intro) drawn with the draft, on a real frame of this project. */
+  var GROUP_NAMES = { captions: 'Captions', endCard: 'End card', cover: 'Cover', motion: 'Motion', watermark: 'Corner logo', intro: 'Intro card' };
+  function initStyle(ST) {
+    header(ST);
+    var SS = null, draft = {}, dirty = false, platform = 'short', timer = 0, seq = 0;
+    var el = { groups: $('#sty-groups'), base: $('#sty-base'), line: $('#sty-line'), phones: $('#sty-phones'), msgs: $('#sty-msgs'), dirty: $('#sty-dirty'), text: $('#sty-text') };
+    var get = function (o, k) { return k.split('.').reduce(function (a, x) { return a && typeof a === 'object' ? a[x] : undefined; }, o); };
+    var set = function (o, k, v) { var ks = k.split('.'); var a = o; ks.slice(0, -1).forEach(function (x) { if (!a[x] || typeof a[x] !== 'object') a[x] = {}; a = a[x]; }); a[ks[ks.length - 1]] = v; };
+    var unset = function (o, k) { var ks = k.split('.'); var g = o[ks[0]]; if (!g) return; delete g[ks[1]]; if (!Object.keys(g).length) delete o[ks[0]]; };
+    function mark(d) { dirty = d; el.dirty.textContent = d ? 'not saved yet' : 'saved'; }
+    function msgs(list) { el.msgs.innerHTML = list.map(function (m) { return '<li class="' + (m[0] || '') + '">' + esc(m[1]) + '</li>'; }).join(''); }
+
+    function field(key, spec) {
+      var v = get(SS.style, key), own = get(draft, key) !== undefined, id = 'f-' + key.replace('.', '-'), ctl;
+      var name = key.split('.')[1];
+      switch (spec.type) {
+        case 'bool': ctl = '<button type="button" class="switch" role="switch" id="' + id + '" aria-checked="' + (v === true) + '" aria-label="' + esc(key) + '"></button>'; break;
+        case 'enum': ctl = '<select id="' + id + '">' + spec.values.map(function (x) { return '<option' + (x === v ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select>'; break;
+        case 'font': ctl = '<input type="text" id="' + id + '" list="sty-fonts" value="' + esc(v) + '" spellcheck="false">'; break;
+        case 'int': case 'number': case 'scene': ctl = '<input type="number" id="' + id + '" value="' + (v == null ? '' : v) + '"' + (spec.min != null ? ' min="' + spec.min + '"' : '') + (spec.max != null ? ' max="' + spec.max + '"' : '') + ' step="' + (spec.type === 'number' ? '0.05' : '1') + '"' + (spec.type === 'scene' ? ' placeholder="first"' : '') + '>'; break;
+        case 'color': case 'colorOrNone': case 'colorOrAuto':
+          var hex = /^#[0-9a-f]{6}/i.test(v || '') ? v.slice(0, 7) : '#000000';
+          ctl = '<input type="color" value="' + hex + '" data-for="' + id + '" aria-label="Pick ' + esc(key) + '"' + (/^#/.test(v || '') ? '' : ' disabled') + '><input type="text" id="' + id + '" value="' + esc(v) + '" spellcheck="false">'; break;
+        default: ctl = '<input type="text" id="' + id + '" value="' + esc(v == null ? '' : v) + '" placeholder="' + (spec.type === 'image' ? 'none (a .png or .svg in the project)' : 'from the shot list') + '" spellcheck="false">';
+      }
+      var src = own ? '<span class="sty-src own">this file · <button type="button" data-reset="' + key + '">reset</button></span>' : '<span class="sty-src">' + esc((SS.sources[key] || '').replace(/^built-in style /, '')) + '</span>';
+      return '<label class="sty-field" data-key="' + key + '" title="' + esc(spec.doc) + '"><span>' + esc(name) + '</span><span class="ctl">' + ctl + '</span>' + src + '</label>';
+    }
+    function build() {
+      var open = $$('.sty-group[open]', el.groups).map(function (d) { return d.dataset.g; });
+      var groups = {};
+      Object.keys(SS.spec).forEach(function (k) { var g = k.split('.')[0]; (groups[g] = groups[g] || []).push(k); });
+      el.groups.innerHTML = '<datalist id="sty-fonts">' + SS.fonts.map(function (f) { return '<option value="' + esc(f) + '">'; }).join('') + '</datalist>' +
+        Object.keys(groups).map(function (g, i) {
+          var isOpen = open.length ? open.indexOf(g) >= 0 : i === 0;
+          return '<details class="sty-group" data-g="' + g + '"' + (isOpen ? ' open' : '') + '><summary>' + (GROUP_NAMES[g] || g) + '</summary><div class="sty-fields">' + groups[g].map(function (k) { return field(k, SS.spec[k]); }).join('') + '</div></details>';
+        }).join('');
+      var bases = SS.builtins.concat(SS.library.filter(function (n) { return SS.builtins.indexOf(n) < 0; }));
+      el.base.innerHTML = bases.map(function (n) { return '<option value="' + esc(n) + '"' + (n === (draft.extends || 'bold') ? ' selected' : '') + '>' + esc(n) + (SS.builtins.indexOf(n) >= 0 ? ' (built-in)' : ' (your library)') + '</option>'; }).join('');
+      el.line.textContent = 'A run here uses: ' + SS.line + '.';
+    }
+    function value(key, spec, input) {
+      var t = input.value.trim();
+      if (spec.type === 'bool') return input.getAttribute('aria-checked') === 'true';
+      if (spec.type === 'int' || spec.type === 'number') return t === '' ? undefined : Number(t);
+      if (spec.type === 'scene') return t === '' ? null : Number(t);
+      if (spec.type === 'image' || spec.type === 'text') return t === '' ? null : t;
+      return t;
+    }
+    function changed(key, v) {
+      if (v === undefined) unset(draft, key); else set(draft, key, v);
+      mark(true); clearTimeout(timer); timer = setTimeout(preview, 250);
+    }
+    el.groups.addEventListener('input', function (e) {
+      var f = e.target.closest('.sty-field'); if (!f) return;
+      var key = f.dataset.key, spec = SS.spec[key];
+      if (e.target.type === 'color') { var txt = $('#' + e.target.dataset.for); txt.value = e.target.value; changed(key, e.target.value); return; }
+      changed(key, value(key, spec, e.target));
+    });
+    el.groups.addEventListener('change', function (e) { var f = e.target.closest('.sty-field'); if (f && e.target.tagName === 'SELECT') changed(f.dataset.key, e.target.value); });
+    el.groups.addEventListener('click', function (e) {
+      var r = e.target.closest('[data-reset]'); if (r) { e.preventDefault(); unset(draft, r.dataset.reset); mark(true); preview(true); return; }
+      var sw = e.target.closest('.switch'); if (sw) { e.preventDefault(); sw.setAttribute('aria-checked', String(sw.getAttribute('aria-checked') !== 'true')); changed(sw.closest('.sty-field').dataset.key, sw.getAttribute('aria-checked') === 'true'); }
+    });
+    el.base.addEventListener('change', function () { if (el.base.value === 'bold') delete draft.extends; else draft.extends = el.base.value; mark(true); preview(true); });
+    el.text.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(preview, 300); });
+    var plat = $('#sty-platforms');
+    plat.addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; platform = b.dataset.p; $$('button', plat).forEach(function (x) { x.setAttribute('aria-checked', String(x === b)); }); preview(); });
+    wireArrows(plat, function (b) { b.click(); });
+
+    function fit() { $$('.sty-shot', el.phones).forEach(function (w) { var f = $('iframe', w); if (f) f.style.transform = 'scale(' + (w.clientWidth / 1080) + ')'; }); }
+    window.addEventListener('resize', fit);
+    function preview(rebuild) {
+      var n = ++seq;
+      return api.post('/api/style/preview', { project: draft, platform: platform, text: el.text.value }).then(function (r) {
+        if (n !== seq) return;
+        SS = Object.assign(SS || {}, r);
+        var m = (r.errors || []).map(function (x) { return ['err', x]; }).concat((r.warnings || []).map(function (x) { return ['', x]; }));
+        msgs(m);
+        $$('.sty-field', el.groups).forEach(function (f) { f.classList.toggle('bad', (r.errors || []).some(function (x) { return x.indexOf('"' + f.dataset.key + '"') >= 0; })); });
+        if (rebuild) build(); else $$('.sty-field', el.groups).forEach(function (f) { var src = $('.sty-src', f), own = get(draft, f.dataset.key) !== undefined; if (src && !own) src.textContent = (SS.sources[f.dataset.key] || '').replace(/^built-in style /, ''); });
+        el.line.textContent = 'A run here uses: ' + (r.line || '') + (dirty ? ' (with your unsaved changes).' : '.');
+        $('#sty-frame-note').textContent = r.frame ? 'on a real frame of this project' : 'no recording yet: plain background';
+        if (!r.ok) return;
+        var labels = { caption: 'Caption · ' + ({ short: 'Short', reel: 'Reel', tiktok: 'TikTok' })[platform], endCard: 'End card', cover: 'Cover', intro: 'Intro card' };
+        var keys = Object.keys(r.pages);
+        if ($$('.sty-phone', el.phones).map(function (x) { return x.dataset.k; }).join() !== keys.join()) {
+          el.phones.innerHTML = keys.map(function (k) { return '<figure class="sty-phone" data-k="' + k + '"><div class="sty-shot"><iframe sandbox="allow-same-origin" title="' + esc(labels[k]) + ' preview" tabindex="-1"></iframe></div><b></b></figure>'; }).join('');
+        }
+        keys.forEach(function (k) { var fig = $('.sty-phone[data-k="' + k + '"]', el.phones); $('b', fig).textContent = labels[k]; $('iframe', fig).srcdoc = r.pages[k]; });
+        fit();
+      });
+    }
+    function save() {
+      return fetch('/api/style', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(Object.assign({ $schema: 'https://raw.githubusercontent.com/IonFlux84/pushreel/main/docs/style.schema.json' }, draft)) }).then(json).then(function (r) {
+        if (!r.ok) { msgs((r.errors || []).map(function (x) { return ['err', x]; })); return false; }
+        mark(false); SS = Object.assign(SS, r); build(); msgs([['ok', 'Saved to pushreel.style.json.']].concat((r.warnings || []).map(function (x) { return ['', x]; }))); return true;
+      });
+    }
+    $('#sty-save').addEventListener('click', save);
+    $('#sty-render').addEventListener('click', function () {
+      var b = $('#sty-render'); b.disabled = true;
+      save().then(function (ok) {
+        if (!ok) { b.disabled = false; return; }
+        var recorded = ST.recorded && Object.keys(ST.recorded).some(function (id) { return ST.recorded[id]; });
+        if (!recorded) { msgs([['ok', 'Saved. There is no recording in this project yet: run /pushreel, or press Record and export in the Studio.']]); b.disabled = false; return; }
+        api.post('/api/run', { mode: 'rerender' }).then(function (r) {
+          b.disabled = false;
+          if (!r.ok) { msgs([['err', r.error]]); return; }
+          msgs([['ok', 'Saved. Re-rendering now (fixed code, 0 tokens). Follow it in the Studio; the result opens when it is done.']]);
+          subscribe(function (s2) { if (s2.run && s2.run.status === 'done' && !s2.run.alive) location.href = '/result'; });
+        });
+      });
+    });
+    window.addEventListener('beforeunload', function (e) { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+    fetch('/api/style').then(json).then(function (r) {
+      SS = r; draft = JSON.parse(JSON.stringify(r.project || {})); delete draft.$schema;
+      if (r.projectError) msgs([['err', 'pushreel.style.json: ' + r.projectError + '. Saving here replaces it.']]);
+      $('#sty-file').textContent = r.project ? 'pushreel.style.json' : 'no pushreel.style.json yet';
+      build(); preview();
+    });
+  }
+
   /* ================= result ================= */
   function initResult(ST) {
     header(ST);
@@ -814,7 +949,7 @@
     var page = document.body.dataset.page;
     $$('[data-glyph]').forEach(function (g) { g.innerHTML = GLYPH[g.dataset.glyph]; g.setAttribute('aria-hidden', 'true'); });
     api.state().then(function (st) {
-      ({ studio: initStudio, result: initResult, recovery: initRecovery }[page] || function () {})(st);
+      ({ studio: initStudio, style: initStyle, result: initResult, recovery: initRecovery }[page] || function () {})(st);
       $$('[data-glyph]').forEach(function (g) { if (!g.innerHTML) { g.innerHTML = GLYPH[g.dataset.glyph]; g.setAttribute('aria-hidden', 'true'); } });
     }).catch(function (e) {
       var m = $('main'); if (m) m.insertAdjacentHTML('afterbegin', '<p class="notice err" style="margin:16px">The Studio lost its connection to the local server. Start it again with: pushreel studio. (' + esc(e.message) + ')</p>');

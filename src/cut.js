@@ -8,7 +8,7 @@ import { layoutAt, clickFocus } from './place.js';
 import { run, ensureDir, readJson, round, which } from './util.js';
 import { E } from './errors.js';
 
-const KIND_NAMES = { headline: "the page's headline", heading: 'a heading', bar: 'a fixed bar', picture: 'a picture', title: 'a card title', page: 'the page' };
+const KIND_NAMES = { headline: "the page's headline", heading: 'a heading', bar: 'a fixed bar', picture: 'a picture', title: 'a card title', logo: 'the corner logo', page: 'the page' };
 
 export function requireFfmpeg() {
   if (!which('ffmpeg') || !which('ffprobe')) throw E.ffmpegMissing();
@@ -54,12 +54,12 @@ export async function cutAll({ dirs, shotlist, scenes, onEvent = () => {} }) {
     clips.push(out);
     onEvent({ type: 'cut-scene', scene: sc.id, length: plan.length, removed: plan.removedSeconds, overrun: plan.overrun, trimmed: plan.trimmed, wanted: sc.duration });
   }
-  const video = planVideo(plans, { endCard: shotlist.cut.endCard, endSeconds: END_CARD_SECONDS, fps: FRAME.fps });
+  const video = planVideo(plans, { endCard: shotlist.cut.endCard, endSeconds: shotlist.cut.endSeconds ?? END_CARD_SECONDS, introSeconds: shotlist.cut.introSeconds || 0, fps: FRAME.fps });
   const stats = {
     waitsRemoved: plans.reduce((n, p) => n + p.waitsRemoved, 0), removedSeconds: round(plans.reduce((n, p) => n + p.removedSeconds, 0), 1),
     zooms: shotlist.cut.zoom > 1 ? plans.reduce((n, p) => n + p.clicks.length, 0) : 0, captions: video.scenes.filter((s) => s.caption).length,
     rawSeconds: round(scenes.reduce((n, sc) => n + (readJson(join(dirs.raw, `scene-${sc.id}.json`)).duration || 0), 0), 1),
-    threshold: shotlist.cut.removeWaitsOver, endCard: !!video.endCard, total: video.total,
+    threshold: shotlist.cut.removeWaitsOver, endCard: !!video.endCard, intro: !!video.intro, total: video.total,
   };
   return { video, plans, stats, clips };
 }
@@ -68,7 +68,7 @@ export async function cutAll({ dirs, shotlist, scenes, onEvent = () => {} }) {
  * Exports one file per target, the cover and captions.md into outDir.
  * @returns {Promise<Array<{ name, kind, target?, bytes, seconds? }>>}
  */
-export async function exportAll({ dirs, outDir, shotlist, scenes, cut, onEvent = () => {} }) {
+export async function exportAll({ dirs, outDir, shotlist, scenes, cut, projectDir, onEvent = () => {} }) {
   requireFfmpeg();
   ensureDir(outDir);
   const slug = shotlist.app.slug, { video, clips, plans } = cut, files = [];
@@ -93,11 +93,11 @@ export async function exportAll({ dirs, outDir, shotlist, scenes, cut, onEvent =
     const layout = (ev.layout || []).map((l) => ({ ...l, t: toCut(l.t, plan.removed || []) }));
     return { ...s, place: { clicks: plan.clicks.flatMap((c) => clickRects(clickFocus(c), shotlist.cut.zoom)), layout, length: plan.length, zoom: shotlist.cut.zoom > 1 ? plan.zoom || [] : [] } };
   });
-  const ov = await renderOverlays({ dir: dirs.cut, shotlist, scenes: withClicks, targets: shotlist.targets, coverFrame, coverOut, coverHeadline: headline, coverLayout: layoutAt(coverEv.layout || [], coverAt) });
+  const ov = await renderOverlays({ dir: dirs.cut, shotlist, scenes: withClicks, targets: shotlist.targets, coverFrame, coverOut, coverHeadline: headline, coverLayout: layoutAt(coverEv.layout || [], coverAt), projectDir });
   const moved = [], covered = [];
   const what = (by) => Object.entries(by || {}).sort((a, b) => b[1] - a[1]).map(([k, v]) => `up to ${Math.round(v * 100)} % of it on ${KIND_NAMES[k] || k}`).join(', ');
   for (const t of Object.keys(ov.captions)) for (const [id, c] of Object.entries(ov.captions[t])) {
-    if (c.band !== 'bottom') moved.push(`scene ${id} on ${PLATFORMS[t].name}: ${c.band}${c.covers.click ? ', still touches the click target' : ''}`);
+    if (c.band !== (c.home || 'bottom')) moved.push(`scene ${id} on ${PLATFORMS[t].name}: ${c.band}${c.covers.click ? ', still touches the click target' : ''}`);
     if (!c.free) covered.push(`scene ${id} on ${PLATFORMS[t].name}: no free spot, took the one that covers least (${[c.covers.click ? 'touches the click target' : '', what(c.covers.kinds)].filter(Boolean).join(', ') || 'a little of the page'})`);
   }
   onEvent({ type: 'placement', moved, covered, cover: { scene: coverScene.id, at: round(coverAt, 2), band: ov.coverBand || 'center', covers: what(ov.coverCovers) } });
@@ -107,7 +107,9 @@ export async function exportAll({ dirs, outDir, shotlist, scenes, cut, onEvent =
 
   const list = join(dirs.cut, 'scenes.ffconcat');
   writeFileSync(list, 'ffconcat version 1.0\n' + clips.map((c) => `file '${c.replace(/'/g, "'\\''")}'`).join('\n') + '\n');
-  const scenesLen = video.endCard ? video.endCard.start : video.total;
+  // The scenes, with their captions and the corner logo, make the body; the intro card and the end card go around it.
+  const introLen = video.intro ? video.intro.length : 0;
+  const scenesLen = (video.endCard ? video.endCard.start : video.total) - introLen;
 
   for (const t of shotlist.targets) {
     const P = PLATFORMS[t], name = `${slug}-${P.suffix}.mp4`, out = join(outDir, name);
@@ -118,15 +120,27 @@ export async function exportAll({ dirs, outDir, shotlist, scenes, cut, onEvent =
       if (!c) continue;
       args.push('-i', c.file);
       f.push(`[${n}:v]scale=out_color_matrix=bt709:out_range=tv,format=yuva420p[o${n}]`);
-      f.push(`[${last}][o${n}]overlay=0:0:enable='between(t,${s.caption.from},${s.caption.to})'[v${n}]`);
+      f.push(`[${last}][o${n}]overlay=0:0:enable='between(t,${round(s.caption.from - introLen)},${round(s.caption.to - introLen)})'[v${n}]`);
       last = `v${n}`; n++;
     }
-    if (video.endCard) {
-      args.push('-loop', '1', '-framerate', String(FRAME.fps), '-t', String(video.endCard.length), '-i', ov.endCard);
-      f.push(`[${last}]trim=end=${scenesLen},setpts=PTS-STARTPTS,format=yuv420p,setsar=1[body]`);
-      f.push(`[${n}:v]scale=${FRAME.width}:${FRAME.height}:out_color_matrix=bt709:out_range=tv,format=yuv420p,setsar=1,fps=${FRAME.fps}[end]`);
-      f.push(`[body][end]concat=n=2:v=1:a=0[out]`);
+    if (ov.watermark && ov.watermark[t]) {
+      args.push('-i', ov.watermark[t].file);
+      f.push(`[${n}:v]scale=out_color_matrix=bt709:out_range=tv,format=yuva420p[o${n}]`);
+      f.push(`[${last}][o${n}]overlay=0:0[v${n}]`);
+      last = `v${n}`; n++;
+    }
+    const card = (file, len, name) => {
+      args.push('-loop', '1', '-framerate', String(FRAME.fps), '-t', String(len), '-i', file);
+      f.push(`[${n}:v]scale=${FRAME.width}:${FRAME.height}:out_color_matrix=bt709:out_range=tv,format=yuv420p,setsar=1,fps=${FRAME.fps}[${name}]`);
       n++;
+    };
+    if (video.endCard || video.intro) {
+      f.push(`[${last}]trim=end=${scenesLen},setpts=PTS-STARTPTS,format=yuv420p,setsar=1[body]`);
+      const parts = [];
+      if (video.intro) { card(ov.intro, video.intro.length, 'intro'); parts.push('[intro]'); }
+      parts.push('[body]');
+      if (video.endCard) { card(ov.endCard, video.endCard.length, 'end'); parts.push('[end]'); }
+      f.push(`${parts.join('')}concat=n=${parts.length}:v=1:a=0[out]`);
     } else f.push(`[${last}]format=yuv420p,setsar=1[out]`);
     args.push('-f', 'lavfi', '-t', String(video.total), '-i', 'anullsrc=r=48000:cl=stereo');
     args.push('-filter_complex', f.join(';'), '-map', '[out]', '-map', `${n}:a`, ...ENCODE.video, ...ENCODE.audio, ...ENCODE.container,

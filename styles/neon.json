@@ -1,0 +1,23 @@
+{
+  "$schema": "../docs/style.schema.json",
+  "name": "neon",
+  "description": "Loud and late-night: upper-case mono type on a near-black box with a cyan edge, the stressed word glowing pink, a black end card.",
+  "captions": {
+    "font": "Spline Sans Mono", "weight": 700, "size": 58,
+    "color": "#f4f1ff", "background": "#0b0618f0",
+    "highlight": "#ff2a8a", "highlightText": "#0b0618", "highlightStyle": "box",
+    "uppercase": true, "position": "bottom", "radius": 6, "shadow": "glow", "border": "#2af0ff"
+  },
+  "endCard": {
+    "enabled": true, "background": "#07040f", "color": "auto", "accent": "#2af0ff",
+    "font": "Spline Sans Mono", "textFont": "Spline Sans Mono",
+    "logo": null, "text": null, "cta": null, "tagline": true, "duration": 2
+  },
+  "cover": {
+    "scene": null, "font": "Spline Sans Mono", "background": "#0b0618", "color": "#f4f1ff", "accent": "#ff2a8a",
+    "uppercase": true, "radius": 8, "shadow": "glow", "logo": null
+  },
+  "motion": { "zoom": 1.55, "cursor": "arrow", "clickColor": "#2af0ff", "scrollSpeed": 1.25 },
+  "watermark": { "enabled": false, "logo": null, "corner": "top-right", "size": 120, "opacity": 0.9 },
+  "intro": { "enabled": false, "text": null, "logo": null, "background": "#07040f", "color": "auto", "duration": 1.2 }
+}

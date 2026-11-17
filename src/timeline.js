@@ -154,13 +154,15 @@ export function ffExpr(kf, key, rest) {
  * The whole video: where each scene starts, when its caption shows, where the end card sits.
  * @param {Array<{id, length, caption}>} scenes planned scenes in order
  */
-export function planVideo(scenes, { endCard = true, endSeconds = 2, fps = 30 } = {}) {
-  let t = 0;
+export function planVideo(scenes, { endCard = true, endSeconds = 2, introSeconds = 0, fps = 30 } = {}) {
   const frame = (s) => Math.round(s * fps) / fps;
+  // An intro card (from the style) comes first; scene times are then counted from the start of the whole video.
+  const intro = introSeconds > 0 && scenes.length ? { start: 0, length: frame(introSeconds) } : null;
+  let t = intro ? intro.length : 0;
   const out = scenes.map((s) => {
     const len = frame(s.length), start = t; t = frame(t + len);
     return { id: s.id, start, length: len, end: t, caption: s.caption ? { text: s.caption, from: round(start + CAPTION_IN), to: round(t - CAPTION_OUT) } : null };
   });
   const end = endCard && out.length ? { start: t, length: endSeconds } : null;
-  return { scenes: out, endCard: end, total: round(t + (end ? end.length : 0)) };
+  return { scenes: out, intro, endCard: end, total: round(t + (end ? end.length : 0)) };
 }

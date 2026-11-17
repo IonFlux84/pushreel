@@ -32,7 +32,14 @@ src/notegate.js                   the model note: the hook that shows it after `
 src/motion.js                     scroll easing and length, step time estimate, still-tail trimming (pure)
 src/timeline.js                   cut planning (pure): waits, lengths, zoom keyframes, video plan
 src/cut.js                        ffmpeg: cut, zoom, overlays, three exports, cover, captions.md
-src/render.js                     the one renderer for captions, end card and cover (Chromium → PNG)
+src/render.js                     the one renderer for captions, end card, cover, intro card and corner logo (Chromium → PNG),
+                                  page builders shared with the Studio's Style screen
+src/style.js                      styles: the table of settings (SPEC), layers and sources, validation, contrast, files
+src/template.js                   story templates and rules: brief for the agent, checks for the validator (pure)
+src/brand.js                      style init: brand colour, font and logo of the running app
+styles/                           the built-in styles clean, bold, neon (JSON)
+templates/                        the built-in templates launch, feature, changelog (JSON)
+docs/style.schema.json            JSON schema of pushreel.style.json, written from SPEC by scripts/style-schema.mjs
 src/presets.js                    platform presets: safe areas, length caps, encoder settings
 src/shotlist.js                   validation, defaults, scene fingerprint
 src/license.js, src/providers/    licence gate behind a provider interface; providers/dodo.js is the real one
@@ -65,6 +72,7 @@ One dependency: `playwright` (pinned). ffmpeg is the system binary. No build ste
   explore-session.json   the same for exploring      consent.json   the consent button exploring found
   cost-marks.json        step markers                   cost.json   last cost report
   model.json             the last model note with the measured context (for the Studio)
+  choice.json            --style and --template of the last /pushreel (begin); used when the shot list names none
   run/raw/scene-N.mp4    recorded footage per scene     run/raw/scene-N.json   its events
   run/failed/scene-N.png what the browser saw when a scene failed
   run/cut/               intermediate files of the last cut
@@ -72,7 +80,8 @@ One dependency: `playwright` (pinned). ffmpeg is the system binary. No build ste
 pushreel-out/<date>-<slug>/   the result (a new run never overwrites an earlier one: -2, -3 …; resume and rerender write into their run's folder)
 ```
 
-Everything in `.pushreel/` can be deleted.
+Everything in `.pushreel/` can be deleted. Next to it, in the project root, `pushreel.style.json` (the project's
+style, written by `style init`, `style set` or the Studio) is meant to be committed.
 
 User-level state is in `~/.pushreel/` (`PUSHREEL_HOME` moves it): `license.json` (the activation) and
 `config.json` (models with "don't ask again", optional Dodo mode). Nothing is written into `~/.claude`.
@@ -98,9 +107,20 @@ User-level state is in `~/.pushreel/` (`PUSHREEL_HOME` moves it): `license.json`
       "include": true, "requiresLogin": false,
       "steps": [ { "do": "hold", "ms": 1400 }, { "do": "click", "selector": "[data-habit=read]" } ] }
   ],
-  "posts": { "short": { "title": "", "description": "" }, "reel": { "caption": "" }, "tiktok": { "caption": "" } }
+  "posts": { "short": { "title": "", "description": "" }, "reel": { "caption": "" }, "tiktok": { "caption": "" } },
+  "style": "neon",                             // optional (0.6.0): a style name, or single values for this run:
+                                               // { "extends": "neon", "captions": { "size": 68 } }
+  "template": "launch"                         // optional (0.6.0); then every included scene has "slot": "hook" | …
 }
 ```
+
+Since 0.6.0 the look (caption type and colours, end card, cover, intro, corner logo, pointer, zoom) comes from a
+style (docs/STYLES.md): `src/style.js` resolves the layers (built-in, `~/.pushreel/styles`, `pushreel.style.json`,
+the shot list) into one complete style and `applyStyle` writes it into the normalized shot list (`cut.zoom`,
+`cut.endSeconds`, `cut.introSeconds`, `cursor`, `motion`, `look`). `cut.zoom`, `cut.endCard`, `cursor: false`
+and `cover.scene` in the shot list are its last layer; `app.brandColor` sits under the project file.
+`prepareShotlist` validates the shot list, the style and the template rules in one pass; `validate-shotlist`,
+`run` and the Studio all use it.
 
 Steps
 
@@ -159,6 +179,17 @@ list does not dismiss in `prepare`.
 - If a scene still fails, the run is paused: recorded scenes stay, a screenshot is saved, the app keeps
   running (if Pushreel started it), and the message names the next commands.
 
+## Styles in the pipeline
+
+Nothing about the look is decided by the model. `begin --style --template` checks the names, prints the style
+line and the template brief, and remembers the choice in `.pushreel/choice.json`. The agent fills the slots;
+`validate-shotlist` turns every broken measurable rule into an error (src/template.js, `checkRules`). The
+renderer reads the complete style from the shot list (`look`); its page builders take URL resolvers, so the
+Studio's Style screen shows exactly the pages the renderer draws (fonts from `/fonts/`, project files from
+`/media/project/`, which serves only fonts and logos inside the project). The pointer, the click ring and the
+scroll speed are part of the scene fingerprint only when they differ from the look before 0.6.0, so older
+footage stays valid with the default style.
+
 ## Cut
 
 `src/timeline.js` plans, `src/cut.js` executes.
@@ -197,7 +228,10 @@ list does not dismiss in `prepare`.
    The headline box (112 px type since 0.4.0, at most 82 % of the width) sits in the centre of the part that
    survives the 4:5 and 1:1 grid crops and moves by the same rules when the page's own headline is there; it
    also avoids pictures, titles and bars where it can. No cursor arrow in the default cover frame.
-5. Per target: scenes + captions + 2 s end card + silent stereo AAC → H.264 High, yuv420p, 30 fps constant,
+   **Since 0.6.0** the caption starts at the style's `captions.position` (bottom, top, or `auto`: the end that
+   covers less, bottom on a tie) and keeps off the corner logo (weight 3); the rules above apply unchanged.
+5. Per target: optional intro card + scenes + captions + corner logo + end card (2 s by default; the style sets
+   1 to 5 s) + silent stereo AAC → H.264 High, yuv420p, 30 fps constant,
    BT.709, CRF 18 capped at 12 Mbit/s, `+faststart`.
 
 ## Re-render without re-recording
@@ -270,3 +304,14 @@ The server refuses requests with a foreign `Host` header and cross-site writes. 
     cost steps. Every saved turn saves one re-read of the whole context.
 16. **Lines the user must see are printed between markers** and the skill tells the agent to paste them
     unchanged, because tool output is not visible in the chat and agents paraphrase.
+17. **Styles are data, applied by fixed code** (0.6.0). A JSON file per style, one table of settings (`SPEC`)
+    from which the validator, the JSON schema and the Studio form are made. Rejected: CSS files supplied by the
+    user (no validation, no contrast check, and a stylesheet can load from the network).
+18. **Fonts and logos only from inside the project**, checked by real path (symbolic links included), extension,
+    content and size. The Studio serves them for previews under the same check.
+19. **Templates enforce only what can be measured.** Person, language and tone go to the agent as instructions;
+    slots, word counts, banned words, emoji, paths, lengths and hashtags are errors. A rule that cannot be
+    checked would only cost turns.
+20. **`app.brandColor` under the project file.** The second field test showed an agent copying the example's
+    purple; a style file the user made must win over a colour the agent wrote. `explore-shot` now reports the
+    app's own colour (`brand`), and the skill's example no longer carries one.

@@ -1,0 +1,23 @@
+{
+  "$schema": "../docs/style.schema.json",
+  "name": "clean",
+  "description": "Quiet and product-like: regular-width type on a white pill with a soft shadow, the stressed word in blue, a light end card.",
+  "captions": {
+    "font": "Sofia Sans", "weight": 700, "size": 66,
+    "color": "#16141f", "background": "#ffffff",
+    "highlight": "#2457f5", "highlightText": "auto", "highlightStyle": "text",
+    "uppercase": false, "position": "bottom", "radius": 40, "shadow": "soft", "border": "none"
+  },
+  "endCard": {
+    "enabled": true, "background": "#f6f5f2", "color": "auto", "accent": "#2457f5",
+    "font": "Sofia Sans", "textFont": "Sofia Sans",
+    "logo": null, "text": null, "cta": null, "tagline": true, "duration": 2
+  },
+  "cover": {
+    "scene": null, "font": "Sofia Sans", "background": "#ffffff", "color": "#16141f", "accent": "#2457f5",
+    "uppercase": false, "radius": 44, "shadow": "soft", "logo": null
+  },
+  "motion": { "zoom": 1.3, "cursor": "dot", "clickColor": "#2457f5", "scrollSpeed": 0.85 },
+  "watermark": { "enabled": false, "logo": null, "corner": "top-right", "size": 120, "opacity": 0.9 },
+  "intro": { "enabled": false, "text": null, "logo": null, "background": "#f6f5f2", "color": "auto", "duration": 1.2 }
+}
