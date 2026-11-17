@@ -1,210 +1,146 @@
-# Pushreel
+<p align="center">
+  <img src=".claude-plugin/icon.png" width="88" alt="Pushreel logo: a white P on a dark tile with a pink record dot">
+</p>
 
-A plugin for Claude Code. You type one command in your project; the agent reads the project, explores the
-running web app and proposes a shot list. After you confirm, fixed code records the app in a headless
-browser in 9:16, cuts it and exports three files in one run:
+<h1 align="center">Pushreel</h1>
+
+<p align="center">
+  <b>Your agent built the app. Now it records the launch video.</b><br>
+  One command in Claude Code, three vertical videos of your web app: a YouTube Short, an Instagram Reel and a TikTok.
+</p>
+
+<p align="center">
+  <a href="https://pushreel.dev">pushreel.dev</a> ·
+  <a href="#quickstart">Quickstart</a> ·
+  <a href="#commands">Commands</a> ·
+  <a href="#data-network-and-privacy">Privacy</a> ·
+  <a href="docs/USAGE.md">Docs</a>
+</p>
+
+<p align="center">
+  <img src="docs/images/banner.png" alt="Pushreel: type /pushreel in Claude Code and get three captioned vertical videos" width="820">
+</p>
+
+---
+
+## What it does
+
+You type `/pushreel` in your project. Claude reads the project, opens your running app and proposes a shot
+list: which screens to show, what to click, one caption per scene. You confirm it, or change it in the
+Studio. Then fixed code takes over. It records the app in a headless browser at 1080×1920, zooms in on
+every click, burns in the captions, cuts the waiting out and exports three files in one run.
+
+<p align="center">
+  <img src="docs/images/three-formats.png" alt="Three frames from a Pushreel run of a habit tracker: a click zoom with the caption 'Four habits, one tap each', a second scene with 'Tap once. Done for today.' and a streak screen with 'Every square is a day I showed up.'" width="760">
+</p>
 
 ```
 pushreel-out/2026-11-17-tinywins/
-  tinywins-short.mp4     YouTube Short     1080×1920, H.264/AAC, captions burned in
-  tinywins-reel.mp4      Instagram Reel    same footage, caption placed for Reels
-  tinywins-tiktok.mp4    TikTok            same footage, caption placed for TikTok
+  tinywins-short.mp4     YouTube Short     1080×1920, captions placed for Shorts
+  tinywins-reel.mp4      Instagram Reel    same footage, captions placed for Reels
+  tinywins-tiktok.mp4    TikTok            same footage, captions placed for TikTok
   tinywins-cover.png     Cover image       1080×1920
-  captions.md            One post text per platform (drafts)
-  shotlist.json          Your scenes, for re-rendering later
-  run.log                What happened, step by step
+  captions.md            one post text per platform, as a draft
+  shotlist.json          your scenes, to record or re-render later
+  run.log                what happened, step by step
 ```
 
-Everything runs on your machine. Your app, your code and your videos are never uploaded. The only
-network requests Pushreel makes are listed under [Data, network and privacy](#data-network-and-privacy).
-Version 0.5.0.
+Everything runs on your machine. Your app, your code and your videos are never uploaded, and there is no
+watermark. Pushreel does not post anything for you.
 
-Pushreel is paid software: it needs a licence key (one person, up to 3 machines), sold at
-[pushreel.dev](https://pushreel.dev). The source is readable so you can check what it does; see
-[LICENSE](LICENSE).
+## Why a plugin and not a prompt?
 
-## Requirements
+You could ask Claude to write a Playwright script and a few ffmpeg commands. The first video would probably
+work. The trouble starts on the second run: the model writes a new script and new flags each time, so timing,
+type and caption positions change from video to video, and a failed click costs another round of tokens.
 
-| | |
-|---|---|
-| Claude Code | tested with 2.1.326. Pushreel needs a local terminal, a browser and ffmpeg, so it works in Claude Code only, not in Claude chat or Cowork. |
-| Node.js | 20 or newer (tested with 24.13) |
-| ffmpeg and ffprobe | on your PATH (tested with 9.0.2). `brew install ffmpeg`, `sudo apt install ffmpeg`, `winget install ffmpeg` |
-| Chromium for Playwright | downloaded once by `pushreel setup`, about 100 MB |
-| Operating system | tested on macOS only. Linux should work. Windows is untested. |
+Pushreel splits the job. The model does what it is good at, once: understanding your app and writing the
+shot list. Recording, retries, zooms, captions, safe areas and the three exports are fixed code. They cost
+0 tokens and look the same on every run. When your UI changes, `/pushreel record` films the same shot list
+again without asking the model.
 
-## Install
+## Quickstart
+
+**1. Install** (Claude Code, Node 20+, ffmpeg on your PATH):
 
 ```bash
 claude plugin marketplace add IonFlux84/pushreel
 claude plugin install pushreel@pushreel
 ```
 
-Claude Code copies the plugin into its plugin cache and installs its one npm dependency, Playwright
-1.65.1, from the `package-lock.json` in the plugin root (exact versions, no install scripts, no custom
-registry). Then download the recording browser once, in Claude Code:
+**2. Download the recording browser once** (Chromium, about 100 MB), in Claude Code:
 
 ```
 /pushreel setup
 ```
 
-or in a terminal: `pushreel setup`. This runs Playwright's own `install chromium`, which downloads
-Chromium (about 100 MB) from Playwright's download server into Playwright's usual browser folder
-(`~/Library/Caches/ms-playwright` on macOS, `~/.cache/ms-playwright` on Linux). If the browser is missing
-when you start a run, Pushreel says so and asks before it downloads anything.
-
-To try a local copy instead: `claude --plugin-dir /path/to/pushreel` after `npm install` in that folder.
-
-## Activate
+**3. Activate your licence** (the key comes by email after the purchase at [pushreel.dev](https://pushreel.dev)):
 
 ```
 /pushreel activate <your-licence-key>
 ```
 
-The key comes by email from Dodo Payments after the purchase. Activation is one request that sends the key
-and a neutral label for this machine (`Pushreel on macOS · 3f9a`: the operating system and four random
-characters) and nothing else. The hostname is never sent. `--name <label>` replaces the label with your own
-text; that text is sent to Dodo Payments.
-
-Works offline. At most once every 30 days, when you are online and start a recording, Pushreel re-checks
-the key with Dodo Payments. Offline never blocks.
+**4. Record** in the project of your web app:
 
 ```
-/pushreel licence            the stored state and this machine's label (offline)
-/pushreel deactivate         frees this machine's place, so you can activate the key on another machine
+/pushreel
 ```
 
-One key is meant for up to 3 active machines. If all three are in use, run `/pushreel deactivate` on one
-of them, then activate again. Details, messages and what is not yet verified against the real Dodo API:
-[docs/LICENSING.md](docs/LICENSING.md).
+Pushreel finds your app or starts it with your project's own dev command, explores it and shows you the shot
+list. Your three videos land in `pushreel-out/`.
 
-## Use it in Claude Code
+## Commands
 
-The command is `/pushreel`. Nothing has to be installed or written into your `~/.claude` folder for it:
-Claude Code makes a plugin skill available under its short name as long as no other command uses that
-name (tested with Claude Code 2.1.326, plugin installed through the marketplace commands).
-
-| Command | What it does | Model |
+| Command | What it does | Uses the model |
 |---|---|---|
 | `/pushreel` | Explore, propose a shot list, ask, then record, cut, export | yes |
 | `/pushreel --yes` | The same without asking | yes |
-| `/pushreel http://localhost:3000` | Use the app at this address instead of finding or starting it | yes |
-| `/pushreel login` | Open a browser window on your app; sign in by hand once, the session is saved for all later runs (OAuth, magic links, SSO) | no |
-| `/pushreel logout` | Remove the saved session | no |
+| `/pushreel http://localhost:3000` | Use the app at this address | yes |
+| `/pushreel login` | Sign in to your app by hand once (OAuth, magic link, SSO); the session is reused | no |
 | `/pushreel studio` | Open the review screen at http://localhost:4317 | no |
-| `/pushreel record` | Record the saved shot list again (your UI changed) | no |
-| `/pushreel rerender` | Cut and export again after changing captions, lengths, scenes or targets | no |
-| `/pushreel resume` | Continue a paused run; only failed and remaining scenes are recorded | no |
-| `/pushreel resume --skip 3,4` | Continue without these scenes | no |
-| `/pushreel cancel` | End a paused run, stop the app if Pushreel started it, keep scenes and shot list | no |
-| `/pushreel status` | Where the run stands and what to do next | no |
-| `/pushreel setup` | Download the recording browser (Chromium, about 100 MB) | no |
-| `/pushreel activate <key>`, `licence`, `deactivate` | The licence, see above | no |
-| `/pushreel config`, `/pushreel config reset` | Show the user settings; ask about the model again | no |
+| `/pushreel record` | Record the saved shot list again after your UI changed | no |
+| `/pushreel rerender` | Export again after changing captions, lengths or scenes | no |
+| `/pushreel resume`, `resume --skip 3,4`, `cancel` | Continue, skip or end a paused run | no |
+| `/pushreel status`, `doctor` | Where the run stands, and what is missing on this machine | no |
+| `/pushreel activate <key>`, `licence`, `deactivate` | Manage the licence | no |
 
-"no" means the agent only passes the command on; the work is fixed code and costs 0 tokens. The agent's
-own short answer still costs a few tokens.
+"no" means fixed code does the work and it costs 0 tokens. If another command on your machine is also called
+`/pushreel`, use the full name `/pushreel:pushreel`. Everything else, including the terminal commands, logins,
+consent banners and what Pushreel writes where, is in [docs/USAGE.md](docs/USAGE.md).
 
-**If `/pushreel` does not start Pushreel:** you (or your project) have another command with that name, in
-`~/.claude/skills/pushreel/`, `~/.claude/commands/pushreel.md` or the same under the project's `.claude/`.
-Yours wins. Use the full name, which always works: `/pushreel:pushreel`, for example
-`/pushreel:pushreel --yes`. `pushreel doctor` tells you if it sees such a command.
+## Models and cost
 
-### The model
+Pushreel uses the model of your Claude Code session and brings no API key of its own. **Claude Sonnet 5.5 is
+the recommended model.** Before it starts exploring, Pushreel shows which model your session runs and what
+this run is expected to cost, measured from your session.
 
-Pushreel uses the model your Claude Code session runs. Claude Sonnet 5.5 is the recommended one. Before
-the agent starts exploring, Pushreel shows which model the session runs and what this run is expected to
-cost, as a range measured from your session. It shows this note itself, through a Claude Code hook, and
-exploring does not start before the note was shown:
+In our measured runs on Sonnet 5.5 a full run cost **about $0.20 to $0.65** at API prices. Most of that is the
+first turn writing your session's own context (`CLAUDE.md`, plugins, MCP servers) into Claude's cache, so a
+run in a session you have just been working in costs less. On a Claude subscription a run counts against
+your plan limits. After every run you get a table with the tokens and the cost per step.
+Details: [docs/COSTS.md](docs/COSTS.md).
 
-```
-Model: Claude Sonnet 5.5, the recommended model.
-Estimated for this run on Claude Sonnet 5.5: about $0.60 to $1.00, €0.54 to €0.91 (your session carries about 127k tokens of context per turn; a large CLAUDE.md, many plugins and MCP servers are what make it large).
-A range, not a quote: measured from this session's transcript, times the turn profile of our first runs, at API list prices (checked 2026-11-17). On a Claude subscription this counts against your plan limits, no extra charge.
-```
+## Licence and price
 
-(That run cost $0.62 with 0.4.0.) **What a run costs, measured with 0.4.0:** on Claude Sonnet 5.5 between
-about $0.20 for a small project in a small session ($0.22 measured) and about $0.65 for a large project in a
-fresh session ($0.62 measured). Two measured runs on this version, not a guarantee. What makes the difference
-is not the app but the session: about three quarters of a large run is the first turn writing the session's
-context (`CLAUDE.md`, plugins, MCP servers) into Claude's cache. **Tip: run `/pushreel` in a session you have
-just been working in.** Its context is already cached, and the same run then costs a fraction (about $0.18
-instead of $0.62 for DartStack, computed from the measured run). Details: [docs/COSTS.md](docs/COSTS.md).
+Pushreel is paid software: **€79 once**, no subscription. One licence is for one person and can be active on
+up to 3 machines at the same time. Updates are included through the end of 2027. The sale is handled by
+Dodo Payments as merchant of record, and the key comes by email.
 
-On a model that costs more than Sonnet 5.5, and on Haiku (where the first shot list may be weak), it then
-asks whether to continue or to stop and switch. Your answer decides; Pushreel never refuses a model.
-"Continue and don't ask again" remembers the choice for that model in `~/.pushreel/config.json`;
-`/pushreel config reset` forgets it. With `--yes` the note is printed and the run continues without a
-question. The Studio shows the same note under the model chip.
+The source is public so you can read what it does before you run it. It is not open source: see
+[LICENSE](LICENSE). Activation works offline after the first request, and the key is checked again at most
+once every 30 days, only when you are online. Offline never blocks a recording.
+Details: [docs/LICENSING.md](docs/LICENSING.md).
 
-## Use it without Claude Code
+## Requirements
 
-The whole pipeline runs from the terminal, given a shot list. This is the core promise: recording never
-depends on a model.
-
-```bash
-pushreel activate <your-licence-key>
-pushreel validate-shotlist my-shotlist.json
-pushreel run --shotlist my-shotlist.json     # starts the app if needed, records, cuts, exports, stops the app
-pushreel studio                              # review screen
-pushreel help                                # every command
-```
-
-`pushreel` is `bin/pushreel` in the plugin folder. Inside Claude Code it is on the PATH of the Bash tool
-while the plugin is enabled.
-
-A complete example shot list: [docs/example-shotlist.json](docs/example-shotlist.json). The format
-is described in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Logins and consent banners
-
-**Showing what is behind a login.** Two ways, by how your app signs people in:
-
-```bash
-pushreel login                           # any login: Google, GitHub, magic link, SSO, password
-export PUSHREEL_LOGIN="email:password"   # a test user for a plain email and password form
-```
-
-`pushreel login` (in Claude Code: `/pushreel login`) opens a visible browser window on your app. You sign
-in by hand; when you press Enter or close the window, Pushreel saves that browser's session to
-`.pushreel/auth.json`. Explore and record runs load it from then on. The file contains session cookies:
-never commit it (`.pushreel/` belongs in `.gitignore`; the command says so if it is missing).
-`pushreel logout` removes it. When the app has signed you out, the run pauses with "Your saved session has
-expired. Run /pushreel login again."
-
-With `PUSHREEL_LOGIN`, Pushreel fills the login form when a scene is redirected to it. The account is read
-at run time and is never written to the shot list, the log or the output folder. Unusual forms can be
-described with `login.steps` in the shot list.
-
-Scenes behind the login are marked `"requiresLogin": true` and are recorded signed in. All other scenes
-are recorded as a visitor, so a landing page looks the way a visitor sees it.
-
-**Consent banners.** A cookie or consent dialog is dismissed once, before the recording, and is never in
-the video: `"prepare": [ { "do": "click", "text": "Reject all" } ]` in the shot list. The agent finds the
-dialog while exploring and puts the step there. By default it picks the option with the least tracking
-(reject, necessary only); tell it if you want accept. Anything else that has to happen once (closing a
-popup, switching the theme) goes into `prepare` too.
-
-Logins with 2FA or a captcha on every visit cannot be recorded. All of it in detail:
-[docs/LOGIN.md](docs/LOGIN.md).
-
-## What Pushreel writes
-
-| Folder | Content | Safe to delete |
-|---|---|---|
-| `.pushreel/` | shot list, stills, run state, raw footage, logs, the saved login (`auth.json`, `session.json`: session cookies) | yes, any time. You lose the recorded scenes and the saved login. |
-| `pushreel-out/<date>-<app>/` | the finished files. A new run gets a new folder (`…-2`, `…-3`); `rerender` and `resume` write into their run's folder | yes |
-| `~/.pushreel/license.json` | the activation: key, activation id, machine name, dates | run `pushreel deactivate` instead of deleting it, so the key's place is freed |
-| `~/.pushreel/config.json` | models you chose "don't ask again" for; optional Dodo mode | yes |
-
-Pushreel writes nothing into `~/.claude`. `PUSHREEL_HOME` moves `~/.pushreel` somewhere else.
-
-Add this to your `.gitignore`:
-
-```
-.pushreel/
-pushreel-out/
-```
+| | |
+|---|---|
+| Claude Code | tested with 2.1.326. Pushreel needs a terminal, a browser and ffmpeg, so it works in Claude Code, not in Claude chat or Cowork. |
+| Node.js | 20 or newer |
+| ffmpeg and ffprobe | on your PATH: `brew install ffmpeg`, `sudo apt install ffmpeg` or `winget install ffmpeg` |
+| Chromium for Playwright | downloaded once by `/pushreel setup` |
+| Operating system | tested on macOS. Linux should work. Windows is untested. |
+| Your app | anything that renders in Chromium: React, Vue, Svelte, Next.js, Laravel, Rails, Django, plain HTML |
 
 ## Data, network and privacy
 
@@ -251,22 +187,12 @@ the note's two amounts in the assistant's visible text. It never stores or sends
 only model names, token counts, step times, the session id and the amounts it computes are written, to `.pushreel/cost.json`, `.pushreel/cost-marks.json`
 and `.pushreel/model.json` in your project.
 
-**Files Pushreel writes** (see also [What Pushreel writes](#what-pushreel-writes)): `.pushreel/` and
+**Files Pushreel writes** (see also [What Pushreel writes](docs/USAGE.md#what-pushreel-writes)): `.pushreel/` and
 `pushreel-out/` in your project, and `~/.pushreel/license.json` and `~/.pushreel/config.json` in your home
 folder. Nothing is written into `~/.claude`. All of it stays until you delete it.
 
 **Privacy policy:** [pushreel.dev/privacy](https://pushreel.dev/privacy).
 **Support and security reports:** [hello@pushreel.dev](mailto:hello@pushreel.dev).
-
-## Troubleshooting
-
-- `pushreel doctor` (or `/pushreel status`) checks Node, ffmpeg, the browser and the licence and prints a
-  fix for each missing piece.
-- Every run writes `run.log` into its output folder (and `.pushreel/run/run.log` while it runs); a paused run says how to go on
-  with `/pushreel resume`, `/pushreel resume --skip 3,4` or `/pushreel cancel`.
-- Licence messages and what to do about each: [docs/LICENSING.md](docs/LICENSING.md), "Messages".
-- Logins, saved sessions and consent banners: [docs/LOGIN.md](docs/LOGIN.md).
-- Still stuck: write to hello@pushreel.dev with the `run.log`.
 
 ## Limits
 
@@ -282,12 +208,21 @@ folder. Nothing is written into `~/.claude`. All of it stays until you delete it
 - The safe-area numbers are ad specifications or third-party figures, because none of the three platforms publishes numbers for normal posts. See [docs/PLATFORMS.md](docs/PLATFORMS.md).
 - The per-step token numbers are an approximation. See [docs/COSTS.md](docs/COSTS.md).
 
-## More
+## Docs
 
+- [docs/USAGE.md](docs/USAGE.md): terminal use without Claude Code, logins and consent banners, files Pushreel writes, troubleshooting
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how it is built, the shot list format, the decisions
-- [docs/LOGIN.md](docs/LOGIN.md): saved sessions, login scripts for CI, consent banners and `prepare`, the browser session
+- [docs/LOGIN.md](docs/LOGIN.md): saved sessions, login scripts for CI, consent banners and `prepare`
 - [docs/PLATFORMS.md](docs/PLATFORMS.md): platform values with sources
-- [docs/LICENSING.md](docs/LICENSING.md): Dodo Payments, what is sent and stored, the re-check, the founder's checklist
-- [docs/COSTS.md](docs/COSTS.md): how tokens are counted and what the limits are
+- [docs/LICENSING.md](docs/LICENSING.md): Dodo Payments, what is sent and stored, the re-check
+- [docs/COSTS.md](docs/COSTS.md): how tokens are counted and what a run costs
 - [docs/example-shotlist.json](docs/example-shotlist.json): a complete shot list
-- [LICENSE](LICENSE): the licence terms
+
+## Support
+
+Questions, bugs and security reports: [hello@pushreel.dev](mailto:hello@pushreel.dev). Please attach the
+`run.log` of the run. Pushreel is made by one person in Bochum, Germany, as part of the
+[$100K Hackathon](https://ship-or-die.com/100k-hackathon).
+
+Pushreel is independent and not affiliated with Anthropic. Claude is a trademark of Anthropic. YouTube,
+Instagram and TikTok are trademarks of their owners.
