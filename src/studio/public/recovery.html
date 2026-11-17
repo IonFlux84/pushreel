@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pushreel · Run paused</title>
+<link rel="icon" href="/favicon.svg">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body data-page="recovery">
+<header class="bar">
+  <a class="brand" href="/"><span class="dot"></span>Pushreel</a>
+  <span class="crumb">/ <b id="crumb"></b></span>
+  <span class="slate loc">localhost:4317 · runs only on this machine</span>
+  <span class="grow"></span>
+  <nav class="deck" aria-label="Screens">
+    <a href="/"><i>01</i> Studio</a>
+    <a href="/result"><i>02</i> Result</a>
+    <a href="/recovery" id="nav-recovery" aria-current="page"><i>03</i> Recovery</a>
+  </nav>
+</header>
+
+<main class="page">
+  <p class="notice" id="empty" hidden></p>
+  <div id="rec-body">
+  <div class="alert" role="alert">
+    <span class="x" aria-hidden="true"></span>
+    <p class="slate" id="al-slate"></p>
+    <h1 id="al-title"></h1>
+    <p id="al-text"></p>
+    <p class="app-line" id="app-line"><span class="dot ok"></span><span id="app-text"></span></p>
+  </div>
+
+  <div class="rec-grid">
+    <div class="rec-col">
+      <section class="card box" aria-labelledby="sl-title">
+        <div class="box-head"><h2 id="sl-title">Shot list</h2><span class="slate" id="sl-n"></span></div>
+        <ol class="sc-list" id="sc-list"></ol>
+      </section>
+
+      <section class="card box" aria-labelledby="tok-title">
+        <div class="box-head"><h2 id="tok-title">Model cost</h2><span class="slate" id="tok-model"></span></div>
+        <dl class="kv">
+          <div><dt>Used so far</dt><dd id="tok-used"></dd></div>
+          <div><dt id="tok-resume">Resume</dt><dd>0 tokens · $0.00</dd></div>
+        </dl>
+        <p class="help">Recorded scenes are not recorded again when you resume. Resume is fixed code and uses no model. On a Claude subscription this counts against your plan limits, no extra charge.</p>
+      </section>
+    </div>
+
+    <div class="rec-col">
+      <figure class="shot-frame">
+        <div class="phone">
+          <div class="screen" id="fail-screen" role="img" aria-label="Screenshot of what the browser saw"><span class="stamp">Stopped here</span></div>
+        </div>
+        <figcaption class="slate" id="fail-cap"></figcaption>
+      </figure>
+
+      <section class="term mini" aria-label="In your terminal">
+        <div class="term-top"><span class="lights" aria-hidden="true"><i></i><i></i><i></i></span><span class="t" id="term-dir"></span><span>fixed code · 0 tokens</span></div>
+        <div class="term-body" id="term-body"></div>
+      </section>
+
+      <section class="card box" aria-labelledby="saved-title">
+        <div class="box-head"><h2 id="saved-title">Saved so far</h2></div>
+        <ul class="files" id="saved"></ul>
+        <p class="help mono">./.pushreel/run/</p>
+      </section>
+    </div>
+
+    <div class="rec-col fixes">
+      <h2 class="slate"><b>How to fix it</b> · <span id="fix-n">three ways</span></h2>
+
+      <section class="card key fix" aria-labelledby="fix-a" id="card-a">
+        <div class="fix-head"><span class="l" aria-hidden="true">A</span><h3 id="fix-a">Sign in once and resume</h3><span class="tag volt">Recommended</span></div>
+        <ol>
+          <li><span>Run this in the chat (or <code>pushreel login</code> in a terminal). A browser window opens on your app; sign in the way you always do. It works with Google, GitHub and other OAuth logins, magic links and SSO.
+            <span class="codeline"><code>/pushreel login</code><button type="button" data-copy="/pushreel login" aria-label="Copy the login command">Copy</button></span>
+          </span></li>
+          <li><span>Close the window. The session is saved in <code>.pushreel/auth.json</code> (session cookies: do not commit it).</span></li>
+          <li><span>Press Resume, or run <code>/pushreel resume</code> in the chat.</span></li>
+          <li><span>Or, for an app with a password form: a test user without 2FA in your shell or in <code>.env.local</code>, then start the Studio again from that shell.
+            <span class="codeline"><code>export PUSHREEL_LOGIN="email:password"</code><button type="button" data-copy='export PUSHREEL_LOGIN="email:password"' aria-label="Copy the export line">Copy</button></span>
+          </span></li>
+        </ol>
+        <button type="button" class="btn primary block" id="resume">Resume</button>
+        <p class="status" id="resume-status" role="status" aria-live="polite" hidden></p>
+        <p class="small">Neither the saved session nor the account is written into the shot list, the log or the videos.</p>
+      </section>
+
+      <section class="card fix" aria-labelledby="fix-b" id="card-b">
+        <div class="fix-head"><span class="l" aria-hidden="true">B</span><h3 id="fix-b">Export the public scenes only</h3></div>
+        <p id="skip-text"></p>
+        <span class="codeline"><code id="skip-cmd"></code><button type="button" id="skip-copy" aria-label="Copy the skip command">Copy</button></span>
+        <button type="button" class="btn s" id="skip">Skip and export</button>
+        <p class="status" id="skip-status" role="status" aria-live="polite" hidden></p>
+      </section>
+
+      <section class="card fix" aria-labelledby="fix-c" id="card-c">
+        <div class="fix-head"><span class="l" aria-hidden="true">C</span><h3 id="fix-c">My login needs 2FA or a captcha</h3><span class="tag warn">A limit</span></div>
+        <p>Pushreel cannot pass those. Use a test environment where they are switched off for the test user. If that is not possible for your app: This is a limit of Pushreel. Write to <a href="mailto:hello@pushreel.dev?subject=My%20login%20needs%202FA%20or%20a%20captcha">hello@pushreel.dev</a> and tell us about your app.</p>
+        <a class="btn s" href="mailto:hello@pushreel.dev?subject=My%20login%20needs%202FA%20or%20a%20captcha">Write to hello@pushreel.dev</a>
+      </section>
+
+      <section class="card fix" aria-labelledby="fix-x">
+        <div class="fix-head"><span class="l" aria-hidden="true">×</span><h3 id="fix-x">Cancel this run</h3></div>
+        <p>End the paused run. Pushreel stops the app if it started it. The recorded scenes and <code>shotlist.json</code> are kept, so you can start again later without exploring twice.</p>
+        <span class="codeline"><code>/pushreel cancel</code><button type="button" data-copy="/pushreel cancel" aria-label="Copy the cancel command">Copy</button></span>
+        <button type="button" class="btn s" id="cancel">Cancel run</button>
+        <div class="confirm" id="cancel-confirm" role="group" aria-label="Confirm cancel" hidden>
+          <p id="cancel-q">Cancel the run?</p>
+          <div class="confirm-acts">
+            <button type="button" class="btn s danger" id="cancel-yes">Yes, cancel the run</button>
+            <button type="button" class="btn s" id="cancel-no">Keep it paused</button>
+          </div>
+        </div>
+        <p class="status" id="cancel-status" role="status" aria-live="polite" hidden></p>
+      </section>
+
+      <p class="help">Stuck? Send <code>.pushreel/run/run.log</code> and the screenshot to hello@pushreel.dev. Both files contain page addresses and no passwords.</p>
+    </div>
+  </div>
+  </div>
+</main>
+<script src="/studio.js"></script>
+</body>
+</html>

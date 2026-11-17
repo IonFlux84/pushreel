@@ -1,0 +1,25 @@
+{
+  "_note": "Editable price table for the cost display. USD per million tokens. Edit the numbers and the date when Anthropic changes prices.",
+  "lastChecked": "2026-11-17",
+  "status": "verified against the official pricing page on the date above",
+  "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+  "recommended": "claude-sonnet-5-5",
+  "runProfile": {
+    "_note": "Turn profile of one full /pushreel run, used for the estimate before a run (src/model.js, estimateRange). [low, high]. messages: agent turns from the prompt to the summary. newTokensPerMessage: tool results and answers that each turn adds to the context. outputTokens: what the model writes in the whole run. defaultContext: context per turn when the session could not be measured. From the runs measured up to 2026-11-17 (docs/COSTS.md); not a guarantee.",
+    "messages": [9, 18], "minRemaining": 4, "newTokensPerMessage": [1500, 3000], "outputTokens": [3500, 7000], "defaultContext": 30000
+  },
+  "typicalRange": {
+    "_note": "For docs and the landing page: what a run costs on the recommended model, from our first measurements. small: the fixture app, a session with about 20k tokens of context. large: DartStack, a 183 KB CLAUDE.md and about 120k tokens of context per turn.",
+    "model": "claude-sonnet-5-5", "small": 0.24, "large": 0.77
+  },
+  "usdToEur": { "rate": 0.9079, "date": "2026-11-16", "source": "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml", "note": "ECB euro reference rate 1 EUR = 1.1014 USD, inverted" },
+  "models": {
+    "claude-sonnet-5-5": { "name": "Claude Sonnet 5.5", "input": 2, "output": 10, "cacheWrite5m": 2.5, "cacheWrite1h": 4, "cacheRead": 0.1 },
+    "claude-opus-5-5": { "name": "Claude Opus 5.5", "input": 4, "output": 20, "cacheWrite5m": 5, "cacheWrite1h": 8, "cacheRead": 0.2 },
+    "claude-haiku-5-5": {
+      "name": "Claude Haiku 5.5", "input": 0.1, "output": 0.5, "cacheWrite5m": 0.125, "cacheWrite1h": 0.2, "cacheRead": 0.01,
+      "over": { "promptTokens": 100000, "input": 0.5, "output": 2.5, "cacheWrite5m": 0.625, "cacheWrite1h": 1, "cacheRead": 0.05 }
+    },
+    "claude-fable-5-2": { "name": "Claude Fable 5.2", "input": 8, "output": 40, "cacheWrite5m": 10, "cacheWrite1h": 16, "cacheRead": 0.2 }
+  }
+}

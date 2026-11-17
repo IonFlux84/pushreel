@@ -1,0 +1,12 @@
+{
+  "name": "pushreel",
+  "owner": { "name": "Pushreel", "email": "hello@pushreel.dev" },
+  "metadata": { "description": "Pushreel: three vertical videos of your app from one command." },
+  "plugins": [
+    {
+      "name": "pushreel",
+      "source": "./",
+      "description": "Records your running web app in 9:16 and exports a YouTube Short, an Instagram Reel and a TikTok in one run. Everything runs locally."
+    }
+  ]
+}

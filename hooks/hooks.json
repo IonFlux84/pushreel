@@ -1,0 +1,14 @@
+{
+  "description": "Pushreel: shows the model note to the user right after `pushreel begin` (before any exploring), and refreshes the token count of a run after the agent has answered. Both do nothing outside a Pushreel run, read only local files (the project's .pushreel/ folder and the token counts in the session transcript) and send nothing anywhere.",
+  "hooks": {
+    "PostToolUse": [
+      { "matcher": "Bash", "hooks": [
+        { "type": "command", "if": "Bash(pushreel begin*)", "command": "node \"${CLAUDE_PLUGIN_ROOT}/src/hook.js\" note", "timeout": 10 },
+        { "type": "command", "if": "Bash(*/bin/pushreel begin*)", "command": "node \"${CLAUDE_PLUGIN_ROOT}/src/hook.js\" note", "timeout": 10 }
+      ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/src/hook.js\" cost", "timeout": 10 } ] }
+    ]
+  }
+}

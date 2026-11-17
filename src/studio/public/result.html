@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pushreel · Result</title>
+<link rel="icon" href="/favicon.svg">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body data-page="result">
+<header class="bar">
+  <a class="brand" href="/"><span class="dot"></span>Pushreel</a>
+  <span class="crumb">/ <b id="crumb"></b> <span id="crumb-date"></span></span>
+  <span class="slate loc">localhost:4317/result</span>
+  <span class="grow"></span>
+  <nav class="deck" aria-label="Screens">
+    <a href="/"><i>01</i> Studio</a>
+    <a href="/result" aria-current="page"><i>02</i> Result</a>
+    <a href="/recovery" id="nav-recovery" hidden><i>03</i> Recovery</a>
+  </nav>
+</header>
+
+<main class="page">
+  <p class="notice" id="empty" hidden></p>
+  <div id="res-body">
+  <div class="page-head">
+    <div>
+      <p class="slate"><span class="tag ink">Off air</span><span id="run-line"></span></p>
+      <h1 id="res-h1"><span class="mk">Three</span> videos, ready to upload</h1>
+      <p>Saved in <code id="out-dir"></code>. Nothing was uploaded. <span id="app-note"></span></p>
+    </div>
+    <div class="acts">
+      <button type="button" class="btn" id="copy-dir">Copy folder path</button>
+      <a class="btn" href="/">Back to the shot list</a>
+    </div>
+  </div>
+
+  <div class="result">
+    <div class="main-col">
+    <section aria-labelledby="vids-title">
+      <div class="toolbar">
+        <h2 class="slate" id="vids-title"><b>Same footage</b> · caption placed per platform</h2>
+        <span class="lab-tog"><span id="safe-lbl">Show safe area</span><button type="button" class="switch" id="safe" role="switch" aria-checked="false" aria-labelledby="safe-lbl"></button></span>
+      </div>
+      <div class="vids" id="vids"></div>
+    </section>
+
+      <section class="card box" aria-labelledby="cost-title">
+        <div class="box-head">
+          <h2 id="cost-title">Run cost</h2>
+          <div class="tabs s" id="currency" role="radiogroup" aria-label="Currency">
+            <button type="button" role="radio" data-c="usd" aria-checked="true">USD</button>
+            <button type="button" role="radio" data-c="eur" aria-checked="false" tabindex="-1">EUR</button>
+          </div>
+        </div>
+        <table class="cost">
+          <thead><tr><th scope="col">Step</th><th scope="col">In</th><th scope="col">Out</th><th scope="col">Cost</th></tr></thead>
+          <tbody id="cost-rows"></tbody>
+          <tfoot id="cost-total"></tfoot>
+        </table>
+        <p class="help" id="cost-note"></p>
+        <p class="help">On a Claude subscription this counts against your plan limits, no extra charge. Recording replays shotlist.json with fixed code. A retry doubles the waits and costs 0 tokens. Re-rendering with changed captions or lengths costs 0 tokens too.</p>
+      </section>
+    </div>
+
+    <div class="side">
+      <section class="card key box" aria-labelledby="caps-title">
+        <div class="box-head"><h2 id="caps-title">Post texts</h2><span class="slate" id="caps-state">captions.md · drafts</span></div>
+        <div class="tabs" id="cap-tabs" role="tablist" aria-label="Platform">
+          <button type="button" role="tab" id="tab-short" aria-controls="panel-short" aria-selected="true"><span class="glyph" data-glyph="short"></span>Short</button>
+          <button type="button" role="tab" id="tab-reel" aria-controls="panel-reel" aria-selected="false" tabindex="-1"><span class="glyph" data-glyph="reel"></span>Reel</button>
+          <button type="button" role="tab" id="tab-tiktok" aria-controls="panel-tiktok" aria-selected="false" tabindex="-1"><span class="glyph" data-glyph="tiktok"></span>TikTok</button>
+        </div>
+
+        <div id="panel-short" role="tabpanel" aria-labelledby="tab-short">
+          <div class="field">
+            <div class="field-top"><label for="short-title">Title</label><span class="cap-n" id="short-title-n"></span></div>
+            <input id="short-title" type="text" data-max="100" value="">
+          </div>
+          <div class="field">
+            <div class="field-top"><label for="short-desc">Description</label><span class="cap-n" id="short-desc-n"></span></div>
+            <textarea id="short-desc" rows="5" data-max="5000"></textarea>
+          </div>
+          <p class="help">Title and description are copied together.</p>
+        </div>
+
+        <div id="panel-reel" role="tabpanel" aria-labelledby="tab-reel" hidden>
+          <div class="field">
+            <div class="field-top"><label for="reel-text">Caption</label><span class="cap-n" id="reel-text-n"></span></div>
+            <textarea id="reel-text" rows="9" data-max="2200"></textarea>
+          </div>
+          <p class="help">Instagram shows about the first line before "more". The hook is in that line.</p>
+        </div>
+
+        <div id="panel-tiktok" role="tabpanel" aria-labelledby="tab-tiktok" hidden>
+          <div class="field">
+            <div class="field-top"><label for="tiktok-text">Caption</label><span class="cap-n" id="tiktok-text-n"></span></div>
+            <textarea id="tiktok-text" rows="6" data-max="2200"></textarea>
+          </div>
+          <p class="help">Links in TikTok captions are not clickable. Put the address in your profile too.</p>
+        </div>
+
+        <div class="copy-row">
+          <button type="button" class="btn primary" id="copy-cap">Copy text</button>
+          <span id="copy-status" role="status" aria-live="polite"></span>
+        </div>
+        <p class="help" id="caps-help">Drafts from your README and the shot list. Read them before you post. The agent does not know your users. Edits are saved to captions.md.</p>
+      </section>
+
+    <section class="card box" aria-labelledby="files-title">
+        <div class="box-head"><h2 id="files-title">Also in the folder</h2><span class="slate" id="files-n"></span></div>
+        <ul class="flist" id="flist"></ul>
+      </section>
+      <section class="card box" aria-labelledby="next-title">
+        <div class="box-head"><h2 id="next-title">Next</h2><span class="slate">posting is up to you</span></div>
+        <ol class="next">
+          <li><div><b>Watch each video once with the sound off.</b><p>Turn on "Show safe area" and check that every caption is clear of the shaded areas.</p></div></li>
+          <li><div><b>Upload them with the tool you already use.</b><p>Pushreel does not post for you.</p></div></li>
+          <li><div><b>Changed your UI? Run <code>/pushreel record</code>.</b><p>The shot list is saved. Fixed code records it again, 0 tokens. For new captions only: <code>/pushreel rerender</code>.</p></div></li>
+        </ol>
+      </section>
+    </div>
+  </div>
+
+  </div>
+</main>
+<script src="/studio.js"></script>
+</body>
+</html>

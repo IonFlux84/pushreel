@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pushreel · Studio</title>
+<link rel="icon" href="/favicon.svg">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body data-page="studio" class="fixed">
+<header class="bar">
+  <a class="brand" href="/"><span class="dot"></span>Pushreel</a>
+  <span class="crumb">/ <b id="crumb"></b></span>
+  <span class="slate loc">localhost:4317 · runs only on this machine</span>
+  <span class="grow"></span>
+  <div class="bar-tools">
+    <div class="pop-wrap">
+      <button type="button" class="chip-btn" id="app-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="app-pop">
+        <span class="dot ok" id="app-dot"></span><span class="lbl">App</span> <span id="app-addr"></span> <span class="more" id="app-state"></span> <span class="chev" aria-hidden="true"></span>
+      </button>
+      <div class="pop" id="app-pop" role="dialog" aria-labelledby="app-title" tabindex="-1" hidden>
+        <p class="slate"><span class="dot ok" id="app-dot2"></span><b>Your app</b> · <span id="app-why">found in your project</span></p>
+        <h2 id="app-title"></h2>
+        <ul>
+          <li id="app-case-running"><b>Already running</b><p>Pushreel reads the port from package.json or .env, uses your app as it is and leaves it running.</p></li>
+          <li id="app-case-start"><b>Not running</b><p>Pushreel starts it with your own command<span id="app-cmd"></span>, and stops it again when the run is done.</p></li>
+          <li><b>Cannot be started</b><p>Missing database, Docker or env variables: Pushreel stops and asks you to start the app yourself or to pass an address.</p></li>
+        </ul>
+        <p class="foot">Use another address: <code>/pushreel http://localhost:3000</code></p>
+        <p class="foot">This review screen runs at localhost:4317, only on this machine.</p>
+      </div>
+    </div>
+    <div class="pop-wrap">
+      <button type="button" class="chip-btn" id="model-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="model-pop">
+        <span class="lbl">Model</span> <span id="model-name">from your session</span> <span class="chev" aria-hidden="true"></span>
+      </button>
+      <div class="pop" id="model-pop" role="dialog" aria-labelledby="model-title" tabindex="-1" hidden>
+        <p class="slate"><b>Model</b> · from your Claude Code session</p>
+        <h2 id="model-title">Pushreel uses the model of your Claude Code session</h2>
+        <div class="mnote" id="model-note" hidden>
+          <p id="model-note-text"></p>
+          <div class="acts" id="model-acts">
+            <button type="button" class="btn s" id="model-continue">Continue with this model</button>
+            <button type="button" class="btn s" id="model-switch">Switch with /model</button>
+          </div>
+          <label id="model-dontask-row"><input type="checkbox" id="model-dontask"> Don't ask again for this model</label>
+          <p class="said" id="model-said" role="status" aria-live="polite" hidden></p>
+        </div>
+        <ul id="model-list"></ul>
+        <p class="foot" id="model-foot">Pushreel uses the model your Claude Code session runs. Switch with <code>/model</code> in Claude Code. Recording itself uses no model.</p>
+        <p class="foot" id="model-foot2"></p>
+      </div>
+    </div>
+  </div>
+  <nav class="deck" aria-label="Screens">
+    <a href="/" aria-current="page"><i>01</i> Studio</a>
+    <a href="/result"><i>02</i> Result</a>
+    <a href="/recovery" id="nav-recovery" hidden><i>03</i> Recovery</a>
+  </nav>
+</header>
+
+<main class="studio">
+  <h1 class="vh" id="page-h1">Review the shot list</h1>
+
+  <section class="shots" aria-labelledby="shots-title">
+    <div class="pane-head"><h2 id="shots-title">Shot list</h2><span class="slate" id="shot-meta"></span></div>
+    <ol class="shot-list" id="shot-list"></ol>
+    <p class="shots-hint" id="shots-hint">Confirm here or tell the agent in the chat, for example "show the streaks first". Changes are saved to .pushreel/shotlist.json.</p>
+  </section>
+
+  <section class="stage" aria-label="Preview">
+    <div class="stage-top">
+      <div class="seg" id="platforms" role="radiogroup" aria-label="Preview platform">
+        <button type="button" role="radio" data-p="short" aria-checked="true"><span class="glyph" data-glyph="short"></span>Short</button>
+        <button type="button" role="radio" data-p="reel" aria-checked="false"><span class="glyph" data-glyph="reel"></span>Reel</button>
+        <button type="button" role="radio" data-p="tiktok" aria-checked="false"><span class="glyph" data-glyph="tiktok"></span>TikTok</button>
+      </div>
+      <span class="slate" id="plat-hint"></span>
+      <span class="safe-tog"><span id="safe-lbl">Safe area</span><button type="button" class="switch" id="safe" role="switch" aria-checked="false" aria-labelledby="safe-lbl"></button></span>
+    </div>
+    <div class="stage-well">
+      <span class="tag warn stage-skip" id="stage-skip" hidden>Skipped · not in the video</span>
+      <div class="phone"><div class="screen" id="screen" data-platform="short" role="img" aria-label="Preview of the selected scene"></div></div>
+    </div>
+    <div class="stage-info"><div id="stage-info" style="display:contents"></div><p class="stage-note" id="stage-note">Still from exploring. Video exists after recording.</p></div>
+    <div class="stage-legend" aria-hidden="true">
+      <span class="slate"><i></i>click</span>
+      <span class="slate"><i class="z"></i>zoom frame</span>
+      <span class="slate"><i class="s"></i>safe area</span>
+    </div>
+  </section>
+
+  <section class="tline" aria-labelledby="tl-title">
+    <h2 class="vh" id="tl-title">Timeline</h2>
+    <div class="tline-top">
+      <button type="button" class="play" id="play" aria-label="Play preview"></button>
+      <span class="tc" id="tc"></span>
+      <span class="slate" id="tl-meta" style="margin-left:auto"></span>
+    </div>
+    <div class="track">
+      <div class="ruler" id="ruler" aria-hidden="true"></div>
+      <div class="segs" id="segs"></div>
+      <div class="ticks" id="ticks" aria-hidden="true"></div>
+      <input class="scrub" id="scrub" type="range" min="0" max="29" step="0.05" value="0" aria-label="Playhead position">
+      <div class="head" id="head"></div>
+      <div class="played" id="played"></div>
+    </div>
+  </section>
+
+  <aside class="rail" aria-labelledby="rail-title">
+    <div class="pane-head"><h2 id="rail-title">Export</h2><span class="slate" id="rail-slate">1080×1920</span></div>
+
+    <div class="rail-body" id="view-setup">
+      <div>
+        <h3>Targets <span>same footage in every file</span></h3>
+        <ul class="targets" id="targets"></ul>
+      </div>
+      <div>
+        <h3>Record and cut <span>fixed code, 0 tokens</span></h3>
+        <div class="checks" id="cuts">
+          <label class="check"><input type="checkbox" name="zoom" checked>Zoom on clicks</label>
+          <label class="check"><input type="checkbox" name="waits" checked>Remove waits</label>
+          <label class="check"><input type="checkbox" name="caps" checked>Burn in captions</label>
+          <label class="check"><input type="checkbox" name="end" checked>End card, 2 s</label>
+        </div>
+      </div>
+      <div>
+        <h3>Model cost <span id="cost-model"></span></h3>
+        <dl class="est">
+          <div><dt>Used so far</dt><dd id="est-used"></dd></div>
+          <div><dt>Record, cut, export</dt><dd id="est-run"></dd></div>
+          <p>On a Claude subscription this counts against your plan limits, no extra charge.</p>
+        </dl>
+      </div>
+      <p class="notice" id="notice" role="status" hidden></p>
+      <div class="go">
+        <p class="sum" id="go-sum"></p>
+        <button type="button" class="btn primary block xl" id="go">Record and export</button>
+        <p id="go-note">The browser runs in the background. Nothing is uploaded.</p>
+        <p class="yes">Skip this review next time: <code>/pushreel --yes</code></p>
+      </div>
+    </div>
+
+    <div class="rail-body" id="view-run" hidden>
+      <div>
+        <p class="run-title" id="run-title">Recording</p>
+        <p class="slate" id="run-elapsed" style="margin-top:8px">00:00 elapsed</p>
+        <div class="prog" id="run-prog" role="progressbar" aria-label="Run progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div>
+      </div>
+      <dl class="run-meter" aria-live="off">
+        <div><dt>Tokens so far</dt><dd id="run-in"></dd></div>
+        <div><dt>Cost so far</dt><dd id="run-cost"></dd></div>
+      </dl>
+      <ol class="steps" id="steps"></ol>
+      <p class="vh" id="run-live" role="status" aria-live="polite"></p>
+      <div class="rail-acts">
+        <button type="button" class="btn block" id="stop">Stop</button>
+        <p>Recorded scenes are kept. If you stop, your app keeps running until you resume or cancel.</p>
+      </div>
+    </div>
+
+    <div class="rail-body" id="view-done" hidden>
+      <div>
+        <p class="run-title" id="done-title">Done</p>
+        <p class="slate" style="margin-top:8px"><span class="dot off"></span>Off air · nothing was uploaded</p>
+        <div class="prog" aria-hidden="true"><i style="width:100%"></i></div>
+      </div>
+      <div>
+        <h3>Files <span id="done-dir"></span></h3>
+        <ul class="files est" id="done-files"></ul>
+      </div>
+      <div>
+        <h3>Run cost <span id="done-model"></span></h3>
+        <dl class="est">
+          <div><dt>Tokens</dt><dd id="done-tok"></dd></div>
+          <div><dt>Run cost</dt><dd id="done-cost"></dd></div>
+          <p>Recording, retrying, cutting and exporting used 0 tokens.</p>
+        </dl>
+      </div>
+      <p style="font-size:13.5px;color:var(--ink-2)"><span id="done-app"></span> Next: watch each video once, copy the post texts, then upload with the tool you already use. Pushreel does not post for you.</p>
+      <div class="rail-acts">
+        <a class="btn primary block xl" id="to-result" href="/result">View result</a>
+        <button type="button" class="btn block" id="again">Change something</button>
+      </div>
+    </div>
+  </aside>
+</main>
+<script src="/studio.js"></script>
+</body>
+</html>

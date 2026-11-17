@@ -1,0 +1,75 @@
+Pushreel Licence (LicenseRef-Pushreel)
+
+Copyright (c) 2026 Pushreel (https://pushreel.dev).
+All rights reserved.
+
+Pushreel is proprietary software. Its source code is made available so that you can read and inspect
+what it does. Making the source available does not grant any right to use it, except as set out below.
+
+1. Licence to use
+
+   1.1 You may use Pushreel only with a valid licence key that you purchased from Pushreel (sold through
+       Dodo Payments as merchant of record) and activated with the software.
+
+   1.2 One licence key is for one natural person. That person may activate it on up to three (3)
+       machines at the same time. Deactivating a machine frees its place for another machine.
+
+   1.3 Within these limits you may install and run Pushreel, and use the videos, images and texts it
+       produces for any purpose, including commercial purposes. The output belongs to you.
+
+2. Restrictions
+
+   You may not, and may not allow anyone else to:
+
+   2.1 copy, publish, distribute, sublicense, sell, rent, lend or otherwise make Pushreel or any part
+       of it available to anyone else, whether modified or not, except for copies that you need to
+       install and run it under section 1;
+
+   2.2 share your licence key with other people or use it beyond the number of machines in section 1.2;
+
+   2.3 remove, disable, bypass or work around the licence check, the activation, or any notice in the
+       software, or use, create or distribute anything that does so;
+
+   2.4 modify Pushreel, or use its source code, in whole or in part, to build a product that competes
+       with it.
+
+   Rights that applicable law grants you and that cannot be excluded by contract (for example under
+   §§ 69d and 69e of the German Copyright Act, UrhG) remain unaffected.
+
+3. Third-party components
+
+   Pushreel installs third-party software that is not covered by this licence, in particular Playwright
+   (Apache License 2.0) and the Chromium browser that Playwright downloads. Those components are governed
+   by their own licences. ffmpeg is not part of Pushreel; you install it yourself under its own licence.
+   The fonts in src/studio/public/fonts are licensed under the SIL Open Font License 1.1.
+
+4. Termination
+
+   This licence ends automatically if you breach it, or if the licence key is refunded, disabled or
+   revoked. When it ends, you must stop using Pushreel and delete your copies. Videos and other output
+   that you made while the licence was valid remain yours.
+
+5. No warranty
+
+   Pushreel is provided "as is", without warranty of any kind, express or implied, including the
+   warranties of merchantability, fitness for a particular purpose and non-infringement, to the extent
+   permitted by law. Statutory rights of consumers remain unaffected.
+
+6. Limitation of liability
+
+   To the extent permitted by law, Pushreel is not liable for any damages arising from the use of, or
+   the inability to use, the software. This does not limit liability for intent or gross negligence,
+   for injury to life, body or health, under the German Product Liability Act (Produkthaftungsgesetz),
+   or for the breach of an essential contractual obligation; in the last case liability is limited to
+   the damage that was foreseeable and typical when the licence was granted.
+
+7. Governing law
+
+   This licence is governed by the laws of the Federal Republic of Germany, excluding the UN Convention
+   on Contracts for the International Sale of Goods (CISG). If you are a consumer, this choice of law
+   does not deprive you of the protection of the mandatory provisions of the law of the country in which
+   you have your habitual residence.
+
+8. Contact
+
+   hello@pushreel.dev

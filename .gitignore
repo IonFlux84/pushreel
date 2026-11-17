@@ -1,0 +1,4 @@
+node_modules/
+.pushreel/
+pushreel-out/
+.DS_Store

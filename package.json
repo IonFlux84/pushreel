@@ -1,0 +1,39 @@
+{
+  "name": "pushreel",
+  "version": "0.5.0",
+  "private": true,
+  "description": "Pushreel: records your running web app in 9:16 and exports a YouTube Short, an Instagram Reel and a TikTok. Plugin for Claude Code.",
+  "license": "SEE LICENSE IN LICENSE",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "pushreel": "bin/pushreel"
+  },
+  "files": [
+    ".claude-plugin/",
+    "bin/",
+    "config/",
+    "hooks/",
+    "skills/",
+    "src/",
+    "docs/ARCHITECTURE.md",
+    "docs/COSTS.md",
+    "docs/LICENSING.md",
+    "docs/LOGIN.md",
+    "docs/PLATFORMS.md",
+    "README.md",
+    "docs/example-shotlist.json",
+    "LICENSE",
+    "package-lock.json"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check-release": "scripts/check-release.sh",
+    "setup": "playwright install chromium"
+  },
+  "dependencies": {
+    "playwright": "1.65.1"
+  }
+}

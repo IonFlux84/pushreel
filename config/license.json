@@ -1,0 +1,9 @@
+{
+  "provider": "dodo",
+  "dodo": {
+    "mode": "live",
+    "productId": { "live": "pdt_0Ns9OGkwveedX6JwMO63q", "test": "pdt_0Ns9Upa7bC3nqRb2TcMmZ" },
+    "revalidateDays": 30
+  },
+  "_note": "provider: 'dodo' (Dodo Payments). dodo.productId.<mode>: the id of the Pushreel product in the Dodo dashboard (pdt_...), one per mode; a string or a list of strings. Without it activation is refused, because Dodo's licence endpoints accept the keys of every merchant. dodo.mode: 'live' or 'test' (PUSHREEL_DODO_MODE overrides). revalidateDays: days between silent re-checks while online, 0 switches them off. Machines per key (3) is the activation limit of the licence key entitlement in the Dodo dashboard, not a value in this file. See docs/LICENSING.md."
+}

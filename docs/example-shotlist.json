@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "app": { "name": "Tiny Wins", "slug": "tinywins", "address": "tinywins.app", "tagline": "Four habits. One tap each.", "brandColor": "#5b3df5" },
+  "viewport": { "width": 360 },
+  "targets": ["short", "reel", "tiktok"],
+  "cut": { "zoom": 1.4, "removeWaitsOver": 0.6, "captions": true, "endCard": true, "trimStillTails": false },
+  "prepare": [ { "do": "click", "selector": "#consent-no" } ],
+  "login": {
+    "url": "/login",
+    "steps": [
+      { "do": "type", "selector": "#email", "value": "{{email}}" },
+      { "do": "type", "selector": "#password", "value": "{{password}}" },
+      { "do": "click", "selector": "button[type=submit]" }
+    ]
+  },
+  "cover": { "scene": 4, "headline": "21 days of tiny wins" },
+  "scenes": [
+    {
+      "id": 1, "title": "Today screen", "url": "/today", "duration": 6, "caption": "Four habits, one tap each.",
+      "steps": [
+        { "do": "hold", "ms": 1400 },
+        { "do": "click", "selector": "[data-habit=read]" }
+      ]
+    },
+    {
+      "id": 2, "title": "Check off Water", "url": "/today", "duration": 8, "caption": "Tap once. Done for today.",
+      "steps": [
+        { "do": "hold", "ms": 1800 },
+        { "do": "click", "selector": "[data-habit=water]" }
+      ]
+    },
+    {
+      "id": 3, "title": "Streaks", "url": "/streaks", "duration": 8, "caption": "Every square is a day I showed up.",
+      "steps": [
+        { "do": "hold", "ms": 1300 },
+        { "do": "click", "selector": "#week-toggle" },
+        { "do": "wait", "ms": 1800 },
+        { "do": "click", "selector": "#today-sq" }
+      ]
+    },
+    {
+      "id": 4, "title": "Share card", "url": "/share/21", "duration": 5, "caption": "Share it with one tap.",
+      "steps": [
+        { "do": "hold", "ms": 1000 },
+        { "do": "click", "text": "Share your streak" }
+      ]
+    },
+    {
+      "id": 5, "title": "Settings", "url": "/settings", "duration": 5, "caption": "Set a reminder for each habit.", "include": false, "requiresLogin": true,
+      "steps": [
+        { "do": "hold", "ms": 900 },
+        { "do": "click", "selector": "[data-reminder=water]" }
+      ]
+    }
+  ],
+  "posts": {
+    "short": { "title": "Four habits, one tap each, 21 days in a row #Shorts", "description": "Tiny Wins is a habit tracker. Tap a tile to check off the day, and the streak grid fills in one square at a time.\n\nTry it: tinywins.app" },
+    "reel": { "caption": "Three weeks of showing up, one small square at a time.\n\nI built Tiny Wins because big goals kept slipping. Four habits, one tap each, and a grid that shows every day I did the work.\n\nFree to try. Link in bio." },
+    "tiktok": { "caption": "Checking off four habits with one tap each, 21 days running. Built this so a good day takes ten seconds to log. tinywins.app" }
+  }
+}
