@@ -23,6 +23,17 @@
 
 ---
 
+## Made with Pushreel
+
+<p align="center">
+  <img src="docs/images/made-with-pushreel.gif" width="270" alt="The first seconds of the YouTube Short Pushreel made of pushreel.dev: the hero with the /pushreel terminal and the three phones, then the Get started section, with burned-in captions">
+</p>
+
+<p align="center">
+  The first seconds of the YouTube Short Pushreel recorded of its own website, from a shot list, in 47 seconds.<br>
+  The agent-only run of the same page, where Claude explored the site and wrote the shot list itself, took nine steps and cost $0.18 on Claude Sonnet 5.5.
+</p>
+
 ## What it does
 
 You type `/pushreel` in your project. Claude reads the project, opens your running app and proposes a shot
