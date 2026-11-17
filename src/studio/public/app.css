@@ -106,7 +106,7 @@ p code, li code, dd code { background: var(--paper-2); border: 1px solid var(--l
 .brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--ink);
   font: 900 25px/1 var(--f-display); letter-spacing: -.01em; }
 .brand:hover { color: var(--ink); }
-.brand .dot { width: 10px; height: 10px; }
+.brand .dot { width: 24px; height: 24px; border-radius: 6px; background: url("favicon.svg") center / contain no-repeat; box-shadow: none; animation: none; }
 .crumb { font: 500 13px/1 var(--f-mono); color: var(--ink-3); white-space: nowrap; }
 .crumb b { color: var(--ink); font-weight: 700; }
 .bar .grow { flex: 1; min-width: 0; }
