@@ -61,12 +61,17 @@ again without asking the model.
 
 ## Quickstart
 
-**1. Install** (Claude Code, Node 20+, ffmpeg on your PATH):
+**1. Install** (Claude Code, Node 20+, ffmpeg on your PATH), in your terminal:
 
 ```bash
-claude plugin marketplace add IonFlux84/pushreel
-claude plugin install pushreel@pushreel
+claude plugin install pushreel --marketplace IonFlux84/pushreel
 ```
+
+This adds the Pushreel marketplace and installs the plugin in one go (Claude Code 2.1.292 or later). On an
+older Claude Code, use two commands: `claude plugin marketplace add IonFlux84/pushreel`, then
+`claude plugin install pushreel@pushreel`. Before installing, Claude Code shows its usual note that plugins
+can run code on your machine. Everything Pushreel runs is in this repository: start with
+[`hooks/hooks.json`](hooks/hooks.json) and [`bin/`](bin/).
 
 **2. Download the recording browser once** (Chromium, about 100 MB), in Claude Code:
 
@@ -88,6 +93,15 @@ claude plugin install pushreel@pushreel
 
 Pushreel finds your app or starts it with your project's own dev command, explores it and shows you the shot
 list. Your three videos land in `pushreel-out/`.
+
+## Updates
+
+Updates are included through the end of 2027. Claude Code does not update plugins from third-party
+marketplaces by itself, so get a new version in one of two ways:
+
+- **Now:** `claude plugin update pushreel@pushreel` in your terminal, then `/reload-plugins` in an open session.
+- **Automatically:** once in Claude Code, open `/plugin`, go to the **Marketplaces** tab, select **pushreel**
+  and choose **Enable auto-update**. New versions then arrive in the background and load with the next session.
 
 ## Commands
 
