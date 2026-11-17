@@ -255,7 +255,7 @@ and `.pushreel/model.json` in your project.
 `pushreel-out/` in your project, and `~/.pushreel/license.json` and `~/.pushreel/config.json` in your home
 folder. Nothing is written into `~/.claude`. All of it stays until you delete it.
 
-**Privacy policy:** [pushreel.dev/privacy.html](https://pushreel.dev/privacy.html).
+**Privacy policy:** [pushreel.dev/privacy](https://pushreel.dev/privacy).
 **Support and security reports:** [hello@pushreel.dev](mailto:hello@pushreel.dev).
 
 ## Troubleshooting
