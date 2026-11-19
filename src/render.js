@@ -13,7 +13,9 @@ import { ensureDir } from './util.js';
 import { BUNDLED_FONTS, FONT_DIR, STYLE_DIR, fontOf, projectFile, inkOn, css } from './style.js';
 import { E } from './errors.js';
 
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+export const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+/** A value for a single-quoted CSS string or url('…'): quotes, backslashes, line breaks and "<" escaped. Pure. */
+export const cssStr = (s) => String(s).replace(/[\\'"<>\n\r\f]/g, (c) => `\\${c.charCodeAt(0).toString(16)} `);
 export { inkOn };
 
 let BOLD = null;
@@ -52,8 +54,8 @@ export function fontsFor(look, { projectDir, urls = fileUrls } = {}) {
   const rules = [], fam = {};
   for (const [name, f] of Object.entries(BUNDLED_FONTS)) {
     const [latin, ext] = f.files;
-    rules.push(`@font-face { font-family: '${name}'; font-weight: ${f.weights[0]} ${f.weights[1]}; src: url('${urls.font(latin)}') format('woff2'); unicode-range: ${UNICODE.latin}; }`);
-    rules.push(`@font-face { font-family: '${name}'; font-weight: ${f.weights[0]} ${f.weights[1]}; src: url('${urls.font(ext)}') format('woff2'); unicode-range: ${UNICODE.ext}; }`);
+    rules.push(`@font-face { font-family: '${name}'; font-weight: ${f.weights[0]} ${f.weights[1]}; src: url('${cssStr(urls.font(latin))}') format('woff2'); unicode-range: ${UNICODE.latin}; }`);
+    rules.push(`@font-face { font-family: '${name}'; font-weight: ${f.weights[0]} ${f.weights[1]}; src: url('${cssStr(urls.font(ext))}') format('woff2'); unicode-range: ${UNICODE.ext}; }`);
   }
   let n = 0;
   const values = [look.captions.font, look.endCard.font, look.endCard.textFont, look.cover.font];
@@ -63,7 +65,7 @@ export function fontsFor(look, { projectDir, urls = fileUrls } = {}) {
     if (f.bundled) fam[v] = { css: `'${f.bundled}'`, weights: BUNDLED_FONTS[f.bundled].weights };
     else if (f.file) {
       const alias = `Pushreel Project Font ${++n}`, ext = f.file.split('.').pop().toLowerCase(), format = { woff2: 'woff2', ttf: 'truetype', otf: 'opentype' }[ext];
-      rules.push(`@font-face { font-family: '${alias}'; font-weight: 100 900; src: url('${urls.file(f.file, f.rel)}') format('${format}'); }`);
+      rules.push(`@font-face { font-family: '${alias}'; font-weight: 100 900; src: url('${cssStr(urls.file(f.file, f.rel))}') format('${format}'); }`);
       fam[v] = { css: `'${alias}'`, weights: [100, 900] };
     } else fam[v] = { css: "'Sofia Sans Condensed'", weights: [600, 900] };
   }
@@ -136,7 +138,7 @@ export function coverPage(frameUrl, headline, look = defaultLook(), o = {}) {
   const fonts = fontsFor(look, o), cv = look.cover, a = COVER_AREA, logo = logoUrl(o.projectDir, cv.logo, o.urls || fileUrls);
   const shadow = cv.shadow === 'hard' ? `11px 11px 0 ${css(cv.accent)}` : cv.shadow === 'glow' ? `0 0 0 3px ${css(cv.accent)}, 0 0 48px ${css(cv.accent)}` : SHADOWS[cv.shadow]();
   const show = headline || logo;
-  return `${head(fonts, `html, body { background: #0e0a1f ${frameUrl ? `url('${frameUrl}') center / cover no-repeat` : ''}; }
+  return `${head(fonts, `html, body { background: #0e0a1f ${frameUrl ? `url('${cssStr(frameUrl)}') center / cover no-repeat` : ''}; }
 .cov { position: absolute; left: ${a.x}px; width: ${a.w}px; top: ${a.y}px; height: ${a.h}px; display: flex; align-items: center; justify-content: center; }
 .stack { display: flex; flex-direction: column; align-items: center; gap: 30px; max-width: 82%; }
 .stack img { max-width: 300px; max-height: 150px; object-fit: contain; padding: 22px 30px; border-radius: ${Math.max(12, cv.radius)}px; background: ${css(cv.background)}; box-shadow: ${shadow}; }

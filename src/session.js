@@ -75,7 +75,7 @@ export function usableSession(file, key) {
 export function saveSession(file, lane, storageState, { baseUrl, key, signedIn = false, now = new Date() }) {
   if (!LANES.includes(lane) || !isState(storageState)) throw new Error('Not a browser storage state.');
   const old = readJson(file), lanes = old && old.kind === KIND_SESSION && old.key === key && old.lanes ? old.lanes : {};
-  writeJson(file, { kind: KIND_SESSION, version: 1, savedAt: now.toISOString(), origin: originOf(baseUrl), key, lanes: { ...lanes, [lane]: { storageState, signedIn: !!signedIn, savedAt: now.toISOString() } } });
+  writeJson(file, { kind: KIND_SESSION, version: 1, savedAt: now.toISOString(), origin: originOf(baseUrl), key, lanes: { ...lanes, [lane]: { storageState, signedIn: !!signedIn, savedAt: now.toISOString() } } }, { secret: true });
 }
 
 /** Removes the saved login and everything built on it. @returns {string[]} names of the removed files */

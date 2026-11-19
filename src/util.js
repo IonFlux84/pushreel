@@ -1,6 +1,6 @@
 // Small shared helpers: paths inside the user's project, JSON files, child processes.
-import { mkdirSync, readFileSync, writeFileSync, existsSync, renameSync, appendFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, renameSync, appendFileSync, chmodSync, statSync, realpathSync } from 'node:fs';
+import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
@@ -41,16 +41,34 @@ export function paths(projectDir) {
 /** User-level folder for the licence file. PUSHREEL_HOME overrides it (used by tests). */
 export const userHome = () => process.env.PUSHREEL_HOME || join(homedir(), '.pushreel');
 
-export const ensureDir = (d) => { mkdirSync(d, { recursive: true }); return d; };
+/**
+ * Creates a folder. The project's .pushreel/ and the user's ~/.pushreel/ (and PUSHREEL_HOME) are kept private:
+ * mode 0700, also when they already existed with a wider mode. Best effort: on Windows chmod changes little.
+ */
+export const ensureDir = (d) => { mkdirSync(d, { recursive: true, mode: 0o700 }); privateDirs(d); return d; };
+function privateDirs(d) {
+  const abs = resolve(d), parts = abs.split(sep), targets = [];
+  const home = resolve(userHome());
+  if (abs === home || abs.startsWith(home + sep)) targets.push(home);
+  const i = parts.lastIndexOf('.pushreel');
+  if (i > 0) targets.push(parts.slice(0, i + 1).join(sep) || sep);
+  for (const t of targets) { try { if ((statSync(t).mode & 0o777) !== 0o700) chmodSync(t, 0o700); } catch { /* best effort */ } }
+}
 export function readJson(file, fallback = null) {
   try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return fallback; }
 }
-/** Atomic write, so a reader (the Studio) never sees half a file. */
-export function writeJson(file, data) {
+/**
+ * Atomic write, so a reader (the Studio) never sees half a file. `{ secret: true }` writes the file with mode 0600
+ * (saved logins, sessions, the licence, the user config); an existing file with a wider mode is narrowed, because
+ * the temporary file replaces it.
+ */
+export function writeJson(file, data, { secret = false } = {}) {
   ensureDir(dirname(file));
   const tmp = `${file}.${process.pid}.tmp`;
-  writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n');
+  writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n', secret ? { mode: 0o600 } : undefined);
+  if (secret) { try { chmodSync(tmp, 0o600); } catch { /* best effort */ } }
   renameSync(tmp, file);
+  if (secret) { try { chmodSync(file, 0o600); } catch { /* best effort */ } }
 }
 export const appendLine = (file, line) => { ensureDir(dirname(file)); appendFileSync(file, line + '\n'); };
 
@@ -64,9 +82,69 @@ export const clock = () => new Date().toTimeString().slice(0, 8);
 export const fmtSize = (bytes) => bytes >= 1e6 ? `${(bytes / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1e3))} kB`;
 export const fmtDur = (s) => { s = Math.round(s); return s >= 60 ? `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s` : `${s} s`; };
 
+/** A pid Pushreel may look at or signal: a whole number above 1 that is not this process. Pure. */
+export const validPid = (pid) => Number.isInteger(pid) && pid > 1 && pid !== process.pid;
+
+/**
+ * True when a process with this pid runs and belongs to this user. EPERM (someone else's process, e.g. pid 1)
+ * counts as not alive: Pushreel never signals it. Invalid pids (0, 1, negative, not a whole number) are never alive.
+ */
 export function isAlive(pid) {
-  if (!pid) return false;
-  try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
+  if (!Number.isInteger(pid) || pid <= 1) return false;
+  try { process.kill(pid, 0); return true; } catch { return false; }
+}
+
+/**
+ * The start time of a process as the system reports it, or null. Pushreel stores it next to every pid it saves
+ * (.pushreel/app.json, .pushreel/run.json) and signals a pid only when it still matches: a pid from a planted or
+ * stale file, or a pid the system gave to another process since, is never signalled.
+ * macOS and Linux: `ps -o lstart= -p <pid>`. Windows: PowerShell's Get-Process StartTime.
+ */
+export function processStart(pid) {
+  if (!Number.isInteger(pid) || pid <= 1) return null;
+  try {
+    const r = process.platform === 'win32'
+      ? spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `(Get-Process -Id ${pid}).StartTime.ToUniversalTime().ToString('o')`], { encoding: 'utf8', timeout: 5000, windowsHide: true })
+      : spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8', timeout: 5000, env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' } });
+    const v = r.status === 0 ? String(r.stdout || '').trim().replace(/\s+/g, ' ') : '';
+    return v || null;
+  } catch { return null; }
+}
+
+/** True when `rec.pid` is a valid, living process of this user that started at `rec.pidStart`. */
+export function ownsProcess(rec) {
+  if (!rec || !validPid(rec.pid) || typeof rec.pidStart !== 'string' || !rec.pidStart) return false;
+  if (!isAlive(rec.pid)) return false;
+  return processStart(rec.pid) === rec.pidStart;
+}
+
+/**
+ * Sends a signal to a process Pushreel started, and only to that. `group: true` signals its process group
+ * (the dev server and its children; the pid leads the group because Pushreel spawned it detached).
+ * Never signals pid 0, 1, a negative pid, this process, or a process whose start time differs from the record.
+ * @returns {boolean} whether a signal was sent
+ */
+export function signalOwned(rec, signal = 'SIGTERM', { group = false } = {}) {
+  if (!ownsProcess(rec)) return false;
+  try {
+    if (group && process.platform !== 'win32') process.kill(-rec.pid, signal);
+    else process.kill(rec.pid, signal);
+    return true;
+  } catch { return false; }
+}
+
+/** True when `target` (after resolving symbolic links as far as it exists) lies inside `root`. */
+export function insideDir(root, target) {
+  const real = (p) => {
+    let cur = resolve(p), rest = [];
+    for (;;) {
+      try { return join(realpathSync(cur), ...rest); } catch { /* not there yet */ }
+      const up = dirname(cur); if (up === cur) return resolve(p);
+      rest.unshift(cur.slice(up.length).replace(/^[\\/]+/, '')); cur = up;
+    }
+  };
+  const r = real(root), t = real(target);
+  return t === r || t.startsWith(r + sep);
 }
 
 /** Reads KEY=value lines from .env files. Later files win. Does not expand variables. */

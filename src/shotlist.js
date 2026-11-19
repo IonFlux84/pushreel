@@ -8,6 +8,7 @@ import { parsePrepare } from './session.js';
 import { estimateEnds, trimTail, STILL_TAIL } from './motion.js';
 import { resolveStyle, applyStyle } from './style.js';
 import { resolveTemplate, checkRules } from './template.js';
+import { originProblems, isAbsolute, isLocalUrl, sameOrigin, originOf } from './origin.js';
 
 export const STEP_KINDS = ['click', 'type', 'press', 'hover', 'scroll', 'goto', 'wait', 'waitFor', 'hold'];
 export const DEFAULT_CUT = { zoom: 1.4, removeWaitsOver: 0.6, captions: true, endCard: true, trimStillTails: STILL_TAIL };
@@ -108,6 +109,12 @@ export function validate(raw, ctx = {}) {
     if (!s.login || typeof s.login !== 'object') errors.push('"login" must be an object with "url" and optional "steps".');
     else {
       if (!isStr(s.login.url)) errors.push('"login.url" is missing, e.g. "/login".');
+      else if (!/^(\/|https?:\/\/)/.test(s.login.url)) errors.push('"login.url" must start with "/" (a page of the app, e.g. "/login") or with http(s)://.');
+      else if (isAbsolute(s.login.url)) {
+        // The test account is typed into this page: it must be a page of the app itself.
+        const base = isAbsolute(s.baseUrl) ? s.baseUrl : null;
+        if (base ? !sameOrigin(s.login.url, base) : !(ctx.allowRemote || isLocalUrl(s.login.url))) errors.push(`"login.url" is ${s.login.url}, which is not on ${base ? `the app's origin (${originOf(base)})` : 'this machine'}. Pushreel types PUSHREEL_LOGIN only into pages of the app: use a path like "/login". For a login on another host, the user runs "pushreel login" once and signs in by hand.`);
+      }
       if (s.login.steps !== undefined) {
         if (!Array.isArray(s.login.steps)) errors.push('"login.steps" must be a list.');
         else s.login.steps.forEach((st, j) => { const p = stepProblem(st); if (p) errors.push(`login, step ${j + 1}: ${p}`); });
@@ -136,6 +143,7 @@ export function validate(raw, ctx = {}) {
     }
   }
 
+  errors.push(...originProblems(s, null, { allowRemote: !!ctx.allowRemote }));
   if (!errors.length) {
     const total = totalSeconds(s);
     const inc = s.scenes.filter((sc) => sc.include);
@@ -220,7 +228,7 @@ export function prepareShotlist(raw, projectDir, o = {}) {
     raw: raw && typeof raw === 'object' ? raw : {}, noProject: !!o.noProjectStyle,
   });
   const st = style.style, cut = st.endCard ? { endSeconds: st.endCard.duration, introSeconds: st.intro.enabled ? st.intro.duration : 0, endCard: shotlistEndCard(raw, st) } : {};
-  const v = validate(raw, { cut });
+  const v = validate(raw, { cut, allowRemote: !!o.allowRemote });
   const errors = [...v.errors, ...style.errors, ...template.errors];
   let shotlist = null;
   if (!v.errors.length && !style.errors.length) {

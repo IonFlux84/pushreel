@@ -67,7 +67,7 @@ async function encodeFrames(frames, duration, out, listFile) {
  * @returns {Promise<object>} the events of the recording
  */
 async function recordOnce(ctx, vp, shotlist, scene, ctxState, opts) {
-  const { baseUrl, attempt, dirs } = opts;
+  const { baseUrl, attempt, dirs, allowRemote = false } = opts;
   // A scene that is not marked "requiresLogin" is recorded as a visitor: it never signs in, with nothing.
   const creds = scene.requiresLogin ? opts.creds : null, canSignIn = !scene.requiresLogin && !!(opts.creds || opts.hasAuth);
   const mult = 2 ** (attempt - 1);
@@ -78,7 +78,7 @@ async function recordOnce(ctx, vp, shotlist, scene, ctxState, opts) {
   page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text().slice(0, 300)); });
   const frameDir = join(dirs.raw, `scene-${scene.id}.frames`);
   rmSync(frameDir, { recursive: true, force: true });
-  const state = { vp, mult, baseUrl, sceneId: scene.id, attempt, creds: null, mouse: null, scrollSpeed: (shotlist.motion && shotlist.motion.scrollSpeed) || 1, events: { segments: [], clicks: [], scrolls: [] }, now: () => 0 };
+  const state = { vp, mult, baseUrl, allowRemote, sceneId: scene.id, attempt, creds: null, mouse: null, scrollSpeed: (shotlist.motion && shotlist.motion.scrollSpeed) || 1, events: { segments: [], clicks: [], scrolls: [] }, now: () => 0 };
   let cap = null;
   try {
     const url = abs(baseUrl, scene.url);
@@ -182,7 +182,7 @@ export function recorded(dirs, shotlist, scene) {
  * @returns {Promise<{ done: object[], failed: null | { scene, error } }>}
  */
 export async function recordScenes(o) {
-  const { shotlist, scenes, baseUrl, dirs, onEvent = () => {}, shouldStop = () => false } = o;
+  const { shotlist, scenes, baseUrl, dirs, onEvent = () => {}, shouldStop = () => false, allowRemote = false } = o;
   ensureDir(dirs.raw);
   const p = paths(o.projectDir);
   const creds = readLogin(o.projectDir);
@@ -212,7 +212,7 @@ export async function recordScenes(o) {
     if (prepare) {
       const page = await l.ctx.newPage();
       try {
-        const r = await runPrepare(page, prepare, { vp, mult: 1, baseUrl, attempt: 1, creds: null, mouse: null });
+        const r = await runPrepare(page, prepare, { vp, mult: 1, baseUrl, allowRemote, attempt: 1, creds: null, mouse: null });
         onEvent({ type: 'prepare', message: `Prepare (${laneLabel(name)}): ${r.done} of ${prepare.steps.length} ${prepare.steps.length === 1 ? 'step' : 'steps'} done before recording (not in the video)${r.skipped.length ? `; ${r.skipped.join('; ')}` : ''}.` });
       } catch (e) {
         const shot = join(ensureDir(dirs.failed), 'prepare.png');
@@ -235,7 +235,7 @@ export async function recordScenes(o) {
       for (let attempt = 1; attempt <= MAX_TRIES; attempt++) {
         onEvent({ type: 'scene-start', scene: scene.id, attempt, url: scene.url });
         try {
-          const ev = await recordOnce(lane.ctx, vp, shotlist, scene, lane.state, { baseUrl, attempt, dirs, creds, hasAuth: !!auth });
+          const ev = await recordOnce(lane.ctx, vp, shotlist, scene, lane.state, { baseUrl, attempt, dirs, creds, hasAuth: !!auth, allowRemote });
           rmSync(join(dirs.failed, `scene-${scene.id}.png`), { force: true });
           await save(name);
           onEvent({ type: 'scene-done', scene: scene.id, attempt, url: scene.url, duration: ev.duration, clicks: ev.clicks.length, redirectedTo: ev.redirectedTo, lane: name });

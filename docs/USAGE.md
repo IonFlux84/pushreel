@@ -18,6 +18,19 @@ pushreel help                                # every command
 `pushreel` is `bin/pushreel` in the plugin folder. Inside Claude Code it is on the PATH of the Bash tool
 while the plugin is enabled.
 
+**Addresses.** Pushreel opens only your app on this machine: `localhost`, `127.0.0.1`, `[::1]`,
+`*.localhost` and `*.test`. Every page of a run (scenes, `goto` steps, `prepare`, `login.url`, explored pages)
+must be on the app's own origin; use paths like `/today` in the shot list. Anything else is refused before a
+request is made. To record a staging or production site on purpose, type `--allow-remote` on that command:
+
+```bash
+pushreel run https://staging.example.com --allow-remote
+pushreel studio --allow-remote               # passes it on to the runs the Studio starts
+```
+
+The flag works for one command and is never stored. In Claude Code, write it into the arguments
+(`/pushreel https://staging.example.com --allow-remote`); the skill passes it on only when you typed it.
+
 A complete example shot list: [docs/example-shotlist.json](example-shotlist.json). The format
 is described in [docs/ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -53,7 +66,9 @@ never commit it (`.pushreel/` belongs in `.gitignore`; the command says so if it
 expired. Run /pushreel login again."
 
 With `PUSHREEL_LOGIN`, Pushreel fills the login form when a scene is redirected to it. The account is read
-at run time and is never written to the shot list, the log or the output folder. Unusual forms can be
+at run time and is never written to the shot list, the log or the output folder. It is typed only into a page
+on your app's own origin: a login form on another host (an SSO provider) is refused with "the login page is
+on another host"; use `pushreel login` for those. Unusual forms can be
 described with `login.steps` in the shot list.
 
 Scenes behind the login are marked `"requiresLogin": true` and are recorded signed in. All other scenes
@@ -72,14 +87,17 @@ Logins with 2FA or a captcha on every visit cannot be recorded. All of it in det
 
 | Folder | Content | Safe to delete |
 |---|---|---|
-| `.pushreel/` | shot list, stills, run state, raw footage, logs, the saved login (`auth.json`, `session.json`: session cookies) | yes, any time. You lose the recorded scenes and the saved login. |
+| `.pushreel/` (mode 0700) | shot list, stills, run state, raw footage, logs, the saved login (`auth.json`, `session.json`, `explore-session.json`: session cookies, mode 0600) | yes, any time. You lose the recorded scenes and the saved login. |
 | `pushreel-out/<date>-<app>/` | the finished files. A new run gets a new folder (`…-2`, `…-3`); `rerender` and `resume` write into their run's folder | yes |
-| `~/.pushreel/license.json` | the activation: key, activation id, machine name, dates | run `pushreel deactivate` instead of deleting it, so the key's place is freed |
-| `~/.pushreel/config.json` | models you chose "don't ask again" for; optional Dodo mode | yes |
+| `~/.pushreel/license.json` (mode 0600; the folder 0700) | the activation: key, activation id, machine name, dates | run `pushreel deactivate` instead of deleting it, so the key's place is freed |
+| `~/.pushreel/config.json` (mode 0600) | models you chose "don't ask again" for; optional Dodo mode | yes |
 | `pushreel.style.json` (project root) | your style, from `style init`, `style set` or the Studio | keep it and commit it |
+| `pushreel.logo.svg` (project root) | an inline SVG logo `style init` found on your page, cleaned of scripts, event handlers and outside references | keep it, or name your own logo with `style set` |
 | `~/.pushreel/styles/`, `~/.pushreel/templates/` | your own styles and templates, if you make any | yes |
 
-Pushreel writes nothing into `~/.claude`. `PUSHREEL_HOME` moves `~/.pushreel` somewhere else.
+Pushreel writes nothing into `~/.claude`. The `.pushreel/` folder is not trusted: a copy from someone else's
+repository cannot make Pushreel stop a process it did not start (pids are checked against their start time),
+delete a file outside the project or write outside `pushreel-out/`. `PUSHREEL_HOME` moves `~/.pushreel` somewhere else.
 
 Add this to your `.gitignore`:
 

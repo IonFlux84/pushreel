@@ -9,7 +9,7 @@
   var RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var clamp = function (v, a, b) { return Math.max(a, Math.min(b, v)); };
   var tc = function (s) { s = Math.max(0, Math.floor(s)); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
-  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   var k = function (n) { return n >= 1000 ? (n / 1000).toFixed(n >= 100000 || n % 1000 === 0 ? 0 : 1) + 'k' : String(n); };
   var size = function (b) { return b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1e3)) + ' kB'; };
   var dur = function (s) { s = Math.round(s); return s >= 60 ? Math.floor(s / 60) + ' min ' + String(s % 60).padStart(2, '0') + ' s' : s + ' s'; };

@@ -164,4 +164,29 @@ export function styleFromBrand(found, base = 'bold') {
   if (found.logo) { st.endCard = { ...(st.endCard || {}), logo: found.logo.value }; st.cover = { ...(st.cover || {}), logo: found.logo.value }; }
   return st;
 }
-export function writeInlineLogo(dir, found) { if (found.logo && found.logo.inline) writeFileSync(join(dir, found.logo.value), found.logo.inline + '\n'); }
+/**
+ * An inline SVG copied from the app's page, made safe to keep as a file: no <script>, no <foreignObject>, no
+ * event handler attributes (on…), no javascript: and no reference to anything outside the file (href, xlink:href,
+ * src or CSS url() other than "#id" or an embedded raster data: image), no DOCTYPE or entities. Pure.
+ */
+export function sanitizeSvg(svg) {
+  let s = String(svg || '');
+  for (let i = 0, before = null; i < 5 && before !== s; i++) {
+    before = s;
+    s = s.replace(/<!DOCTYPE[^>[]*(\[[\s\S]*?\])?\s*>/gi, '').replace(/<!ENTITY[\s\S]*?>/gi, '').replace(/<\?[\s\S]*?\?>/g, '')
+      .replace(/<(script|foreignObject|iframe|object|embed|handler|listener)\b[\s\S]*?<\/\1\s*>/gi, '')
+      .replace(/<(script|foreignObject|iframe|object|embed|handler|listener)\b[^>]*\/?>/gi, '')
+      .replace(/<\/(script|foreignObject|iframe|object|embed|handler|listener)\s*>/gi, '')
+      .replace(/\s(on[a-z0-9_-]*)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+      .replace(/\s((?:xlink:)?href|src|action|formaction)\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))/gi, (m, name, _v, d, q, b) => {
+        const v = (d ?? q ?? b ?? '').trim();
+        return /^#[\w.:-]*$/.test(v) || /^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]*$/i.test(v) ? m : '';
+      })
+      .replace(/url\(\s*(['"]?)(?!#)[^)]*\)/gi, 'none')
+      .replace(/@import[^;]*;?/gi, '')
+      .replace(/javascript\s*:/gi, '')
+      .replace(/<(a)\b[^>]*>/gi, '<g>').replace(/<\/a\s*>/gi, '</g>');
+  }
+  return s;
+}
+export function writeInlineLogo(dir, found) { if (found.logo && found.logo.inline) writeFileSync(join(dir, found.logo.value), sanitizeSvg(found.logo.inline) + '\n'); }

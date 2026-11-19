@@ -4,6 +4,7 @@ import { viewportFor } from './presets.js';
 import { E, PushreelError } from './errors.js';
 import { sleep, readEnvFiles } from './util.js';
 import { scrollDuration, scrollDeltas } from './motion.js';
+import { checkTarget, originOf } from './origin.js';
 
 export const DEFAULT_TIMEOUT = 5000;   // per action, doubled on each retry
 export const NAV_TIMEOUT = 15000;      // per page load, doubled on each retry
@@ -142,7 +143,16 @@ async function glide(page, state, x, y, ms = 420) {
  */
 export async function runStep(page, step, state, index) {
   const timeout = (step.timeout || DEFAULT_TIMEOUT) * state.mult;
-  const fill = (v) => String(v).replace(/\{\{email\}\}/g, state.creds ? state.creds.email : '').replace(/\{\{password\}\}/g, state.creds ? state.creds.password : '');
+  const fill = (v) => {
+    const s = String(v);
+    // The test account is typed only into pages of the app itself (same origin as baseUrl), never into another host.
+    if (state.creds && /\{\{(email|password)\}\}/.test(s)) {
+      const at = originOf(page.url()), base = originOf(state.baseUrl);
+      if (!at || !base || at !== base) throw E.loginOffOrigin(state.sceneId, at || page.url(), base || String(state.baseUrl));
+    }
+    return fillCreds(s);
+  };
+  const fillCreds = (v) => String(v).replace(/\{\{email\}\}/g, state.creds ? state.creds.email : '').replace(/\{\{password\}\}/g, state.creds ? state.creds.password : '');
   const seg = async (type, fn) => { const start = state.now(); try { return await fn(); } finally { state.events.segments.push({ type, start, end: state.now(), step: index }); } };
   const notFound = (e) => (/Timeout|waiting for/i.test(String(e && e.message)) ? E.elementNotFound(state.sceneId, describe(step), state.attempt || 1) : e);
 
@@ -323,6 +333,9 @@ export async function runPrepare(page, prepare, state) {
 
 /** Opens an address. Maps connection failures and 5xx answers to catalogue errors. */
 export async function navigate(page, url, state) {
+  // Pinned to the app: an absolute address on another origin is refused before the browser opens it,
+  // unless the user passed --allow-remote (state.allowRemote).
+  if (state.baseUrl) checkTarget(url, state.baseUrl, { allowRemote: !!state.allowRemote, what: state.sceneId ? `Scene ${state.sceneId}: the address` : 'The address' });
   let res;
   try { res = await page.goto(url, { waitUntil: 'load', timeout: NAV_TIMEOUT * (state.mult || 1) }); } catch (e) {
     const m = String(e.message);

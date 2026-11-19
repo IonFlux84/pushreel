@@ -1,8 +1,8 @@
 // The pipeline: record → cut → export. Fixed code, runs without any model, given a shotlist.json.
 // It keeps its state in .pushreel/run.json so that a run can pause at a failed scene and continue later.
 import { rmSync, existsSync, copyFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
-import { paths, readJson, writeJson, appendLine, ensureDir, isAlive, today, clock, fmtSize, fmtDur, round, run as exec } from './util.js';
+import { join, relative, resolve, sep } from 'node:path';
+import { paths, readJson, writeJson, appendLine, ensureDir, ownsProcess, signalOwned, processStart, insideDir, today, clock, fmtSize, fmtDur, round, run as exec } from './util.js';
 import { loadShotlist, totalSeconds } from './shotlist.js';
 import { ensureLicence } from './license.js';
 import { ensureApp, stopApp, appInfo } from './detect.js';
@@ -11,6 +11,7 @@ import { cutAll, exportAll, copyExtras, requireFfmpeg } from './cut.js';
 import { PLATFORMS } from './presets.js';
 import { E, PushreelError } from './errors.js';
 import { styleLine } from './style.js';
+import { originProblems } from './origin.js';
 
 export const readRun = (dir) => readJson(paths(dir).runJson);
 
@@ -25,12 +26,12 @@ export async function pipeline(dir, o = {}) {
   const p = paths(dir), mode = o.mode || 'fresh', say = o.say || (() => {});
   const licence = await ensureLicence();
   const prev = readRun(dir);
-  if (prev && prev.pid && prev.pid !== process.pid && isAlive(prev.pid) && ['recording', 'cutting', 'exporting'].includes(prev.status)) throw E.busy(prev.pid);
+  if (prev && ownsProcess(prev) && ['recording', 'cutting', 'exporting'].includes(prev.status)) throw E.busy(prev.pid);
   if (mode === 'resume' && !(prev && prev.status === 'paused')) throw E.nothingToResume();
   requireFfmpeg();
 
   if (o.shotlistFile && o.shotlistFile !== p.shotlist) { ensureDir(p.state); copyFileSync(o.shotlistFile, p.shotlist); }
-  const { shotlist, warnings, info, style, template } = loadShotlist(p.shotlist, dir, { style: o.style, template: o.template, noProjectStyle: o.noProjectStyle });
+  const { shotlist, warnings, info, style, template } = loadShotlist(p.shotlist, dir, { style: o.style, template: o.template, noProjectStyle: o.noProjectStyle, allowRemote: !!o.allowRemote });
   const dirs = { raw: p.raw, cut: p.cut, failed: p.failed };
 
   if (mode === 'fresh') { rmSync(p.run, { recursive: true, force: true }); }
@@ -47,8 +48,8 @@ export async function pipeline(dir, o = {}) {
   const t0 = Date.now();
   const run = {
     id: mode === 'fresh' || !prev ? new Date().toISOString().replace(/[:.]/g, '-') : prev.id,
-    mode, status: 'recording', pid: process.pid, startedAt: mode === 'fresh' || !prev ? new Date().toISOString() : prev.startedAt, updatedAt: null,
-    app: { name: shotlist.app.name, slug: shotlist.app.slug }, baseUrl: (prev && mode !== 'fresh' && prev.baseUrl) || null, userUrl: o.url || (prev && mode !== 'fresh' && prev.userUrl) || null, appStartedByPushreel: !!appInfo(dir), appStopped: false,
+    mode, status: 'recording', pid: process.pid, pidStart: processStart(process.pid), startedAt: mode === 'fresh' || !prev ? new Date().toISOString() : prev.startedAt, updatedAt: null,
+    app: { name: shotlist.app.name, slug: shotlist.app.slug }, baseUrl: (prev && mode !== 'fresh' && prev.baseUrl) || null, userUrl: o.url || (prev && mode !== 'fresh' && prev.userUrl) || null, appStartedByPushreel: !!(appInfo(dir) || {}).ours, appStopped: false,
     skip, error: null, outDir: null, files: [], stats: (prev && mode !== 'fresh' && prev.stats) || { retries: 0 }, elapsed: (prev && mode === 'resume' && prev.elapsed) || 0,
     licence: licence.devOnly ? 'dev licence' : 'licensed',
     style: { line: styleLine(style), base: style.base, baseFrom: style.baseFrom, layers: style.layers.map((l) => ({ label: l.label, kind: l.kind })) },
@@ -87,7 +88,7 @@ export async function pipeline(dir, o = {}) {
     run.status = 'paused'; run.pid = null; run.elapsed += (Date.now() - t0) / 1000;
     run.error = { ...error.toJSON(), at: new Date().toISOString(), screenshot: error.screenshot ? relative(p.root, error.screenshot) : null, sawUrl: error.sawUrl || null };
     const rec = run.scenes.filter((s) => s.status === 'recorded').map((s) => s.id);
-    const app = appInfo(dir);
+    const app = (appInfo(dir) || {}).ours ? appInfo(dir) : null;
     run.error.saved = `${rec.length ? `Scene${rec.length > 1 ? 's' : ''} ${list(rec)} ${rec.length > 1 ? 'are' : 'is'} recorded and saved.` : 'No scene is recorded yet.'} Nothing is lost.` +
       (app ? ` Your app keeps running at ${app.url}. Pushreel started it and stops it after you resume or cancel.` : '') +
       (run.error.screenshot ? `\nScreenshot of what the browser saw: ./${run.error.screenshot}` : '');
@@ -104,12 +105,15 @@ export async function pipeline(dir, o = {}) {
     // ---------- record ----------
     step('record', 'Record from shotlist.json', { status: 'running', note: toRecord.length ? 'Starting' : 'Nothing to record' });
     if (toRecord.length) {
-      const app = await ensureApp(dir, { url: run.userUrl || shotlist.baseUrl, log: (l) => emit(`● ${l}`) });
+      const app = await ensureApp(dir, { url: run.userUrl || shotlist.baseUrl, allowRemote: !!o.allowRemote, log: (l) => emit(`● ${l}`) });
+      // Every address of the shot list stays on the app (src/origin.js), unless the user typed --allow-remote.
+      const off = originProblems(shotlist, app.url, { allowRemote: !!o.allowRemote });
+      if (off.length) throw E.invalidShotlist(off);
       run.baseUrl = app.url; run.appStartedByPushreel = app.startedByPushreel; save();
       emit(app.already ? `● Using your app at ${app.url}${app.startedByPushreel ? ' (started by Pushreel earlier)' : '. Pushreel leaves it running.'}` : `● App is up at ${app.url}`);
       emit(`● Recording from shotlist.json (fixed steps, no model calls) at 1080×1920`);
       const res = await recordScenes({
-        projectDir: dir, shotlist, scenes: toRecord, baseUrl: app.url, dirs, shouldStop: () => stop,
+        projectDir: dir, shotlist, scenes: toRecord, baseUrl: app.url, allowRemote: !!o.allowRemote, dirs, shouldStop: () => stop,
         onEvent: (e) => {
           if (e.type === 'session' || e.type === 'prepare') emit(`● ${e.message}`);
           if (e.type === 'scene-start') { sceneState(e.scene, { status: 'recording', attempt: e.attempt }); step('record', '', { note: `Scene ${e.scene} of ${shotlist.scenes.length} · ${e.url}${e.attempt > 1 ? ` · try ${e.attempt} of ${MAX_TRIES}` : ''}` }); }
@@ -155,7 +159,9 @@ export async function pipeline(dir, o = {}) {
     // ---------- export ----------
     run.status = 'exporting'; step('captions', 'Captions', { status: 'running', note: 'Rendering' });
     // A new run never overwrites the folder of an earlier run; resume and rerender write into their run's folder.
-    const outDir = join(p.root, (mode !== 'fresh' && prev && prev.outDir && prev.app && prev.app.slug === shotlist.app.slug && prev.outDir) || freeOutDir(p, `${today()}-${shotlist.app.slug}`, prev));
+    // run.json is not trusted: an earlier folder is reused only when it lies inside pushreel-out/.
+    const reuse = mode !== 'fresh' && prev && prev.app && prev.app.slug === shotlist.app.slug && safeOutDir(p, prev.outDir);
+    const outDir = reuse || join(p.root, freeOutDir(p, `${today()}-${shotlist.app.slug}`, prev));
     run.outDir = relative(p.root, outDir); save();
     emit('● Exporting');
     const files = await exportAll({
@@ -214,6 +220,16 @@ export async function pipeline(dir, o = {}) {
     process.off('SIGTERM', onSignal); process.off('SIGINT', onSignal);
   }
 }
+/**
+ * The absolute output folder named by run.json, or null when it is not a folder below <project>/pushreel-out/.
+ * run.json may come from a cloned repository: nothing is ever written outside pushreel-out/ because of it.
+ */
+export function safeOutDir(p, outDir) {
+  if (typeof outDir !== 'string' || !outDir) return null;
+  const abs = resolve(p.root, outDir);
+  if (abs === resolve(p.outRoot) || !abs.startsWith(resolve(p.outRoot) + sep) || !insideDir(p.outRoot, abs)) return null;
+  return abs;
+}
 /** The output folder of a fresh run: pushreel-out/<date>-<slug>, with -2, -3 … when an earlier run already has that name. */
 export function freeOutDir(p, name, prev) {
   const rel = (n) => relative(p.root, join(p.outRoot, n));
@@ -227,9 +243,10 @@ const portOf = (url) => { try { return `Port ${new URL(url).port || 80}`; } catc
 /** Ends a paused run: stops the app if Pushreel started it, keeps the recorded scenes and shotlist.json. */
 export async function cancel(dir) {
   const p = paths(dir), run = readRun(dir);
-  if (run && run.pid && isAlive(run.pid) && run.pid !== process.pid) { try { process.kill(run.pid, 'SIGTERM'); } catch { /* gone */ } }
+  // Only a run of this user that Pushreel started (same pid and start time in run.json) is signalled.
+  if (run) signalOwned(run, 'SIGTERM');
   const stopped = await stopApp(dir);
-  const kept = run ? run.scenes.filter((s) => existsSync(join(p.raw, `scene-${s.id}.mp4`))).map((s) => s.id) : [];
+  const kept = run && Array.isArray(run.scenes) ? run.scenes.filter((s) => existsSync(join(p.raw, `scene-${s.id}.mp4`))).map((s) => s.id) : [];
   if (run) {
     const was = run.status;
     run.status = 'cancelled'; run.pid = null; run.appStopped = stopped.stopped; run.cancelledAt = new Date().toISOString(); run.wasStatus = was;
@@ -249,7 +266,7 @@ export function describe(dir) {
     if (run.status === 'paused' && run.error) { lines.push('', run.error.text, run.error.saved || '', '', 'Next:', ...run.error.next.map((n) => `  ${n}`)); }
     if (run.status === 'done') { lines.push('', `Files in ./${run.outDir}/`, ...run.files.map((f) => `  ${f.name.padEnd(24)} ${f.seconds ? f.seconds + ' s  ' : ''}${fmtSize(f.bytes)}`)); }
   }
-  if (app) lines.push('', `App started by Pushreel: ${app.url} (${app.command}, pid ${app.pid}${isAlive(app.pid) ? '' : ', no longer running'})`);
+  if (app && app.ours) lines.push('', `App started by Pushreel: ${app.url} (${app.command}, pid ${app.pid})`);
   return lines.join('\n');
 }
 export { totalSeconds, round };

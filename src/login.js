@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { rmSync } from 'node:fs';
 import { launch, newContext, runStep, navigate, settle, abs, pathOf, looksLikeLogin, redirectedTo, leftThePage, NAV_TIMEOUT } from './browser.js';
 import { paths, ensureDir, writeJson, readJson, sleep } from './util.js';
+import { checkTarget } from './origin.js';
 import { E, PushreelError } from './errors.js';
 import { wrapState, describeState, parseLoginScript, gitignoreAdvice, removeSaved, KIND_AUTH } from './session.js';
 import { stepProblem } from './shotlist.js';
@@ -45,6 +46,7 @@ export async function loginInteractive(dir, o) {
   const ctx = await browser.newContext({ viewport: { width: 430, height: 860 }, storageState: (readJson(p.auth) || {}).storageState || undefined });
   const page = await ctx.newPage();
   const target = abs(o.baseUrl, o.url || '/');
+  checkTarget(target, o.baseUrl, { allowRemote: !!o.allowRemote });
   await page.goto(target, { waitUntil: 'load', timeout: NAV_TIMEOUT }).catch(() => {});
   const tty = !!(o.input && o.input.isTTY);
   say(`A browser window is open at ${target}.`);
@@ -76,7 +78,7 @@ export async function loginInteractive(dir, o) {
   if (o.input && o.input.pause) o.input.pause();
   if (!latest) throw new PushreelError('login_not_saved', { title: 'The session could not be read', text: 'The browser window closed before Pushreel could read its cookies. Run the command again and wait a second after signing in.', next: ['pushreel login'] });
   const saved = wrapState(latest, { kind: KIND_AUTH, baseUrl: o.baseUrl, how: 'by hand' });
-  ensureDir(p.state); writeJson(p.auth, saved);
+  ensureDir(p.state); writeJson(p.auth, saved, { secret: true });
   removeDerived(p);
   return { saved, why };
 }
@@ -101,12 +103,13 @@ export async function loginScript(dir, o) {
   try {
     const ctx = await newContext(browser, vp, { cursor: false });
     const page = await ctx.newPage();
-    const state = { vp, mult: 1, baseUrl: o.baseUrl, sceneId: 'login', attempt: 1, creds: null, mouse: null, events: { segments: [], clicks: [] }, now: () => 0 };
+    const state = { vp, mult: 1, baseUrl: o.baseUrl, allowRemote: !!o.allowRemote, sceneId: 'login', attempt: 1, creds: null, mouse: null, events: { segments: [], clicks: [] }, now: () => 0 };
     try {
       await navigate(page, abs(o.baseUrl, o.url || script.url), state);
       await settle(page, 200);
       for (let i = 0; i < script.steps.length; i++) {
         const st = script.steps[i];
+        if (st.do === 'post') { checkTarget(abs(o.baseUrl, st.url), o.baseUrl, { allowRemote: !!o.allowRemote, what: 'The login script\'s "post" address' }); }
         if (st.do === 'post') await postForm(page, abs(o.baseUrl, st.url), st.form || {});
         else await runStep(page, st, state, i);
       }
@@ -125,7 +128,7 @@ export async function loginScript(dir, o) {
       throw e;
     }
     const saved = wrapState(await ctx.storageState(), { kind: KIND_AUTH, baseUrl: o.baseUrl, how: 'script' });
-    ensureDir(p.state); writeJson(p.auth, saved);
+    ensureDir(p.state); writeJson(p.auth, saved, { secret: true });
     removeDerived(p);
     await ctx.close();
     return { saved, why: 'script' };

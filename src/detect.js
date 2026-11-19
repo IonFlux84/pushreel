@@ -1,10 +1,11 @@
 // Finds the user's running app, or starts it with the project's own command and stops it again later.
 import { existsSync, openSync, readFileSync, closeSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
 import https from 'node:https';
-import { paths, readJson, writeJson, readEnvFiles, ensureDir, isAlive, sleep } from './util.js';
+import { paths, readJson, writeJson, readEnvFiles, ensureDir, isAlive, sleep, processStart, ownsProcess, signalOwned, validPid, insideDir } from './util.js';
+import { isLocalUrl, checkAppUrl } from './origin.js';
 import { rmSync } from 'node:fs';
 import { E } from './errors.js';
 
@@ -74,7 +75,8 @@ export function inspectProject(dir) {
 export function probe(url, timeout = 1500) {
   return new Promise((res) => {
     let u; try { u = new URL(url); } catch { return res(null); }
-    const req = (u.protocol === 'https:' ? https : http).get(u, { timeout, rejectUnauthorized: false, headers: { accept: 'text/html,*/*' } }, (r) => { r.resume(); res(r.statusCode); });
+    // A dev server's self-signed certificate is accepted on this machine only; any other host is checked as usual.
+    const req = (u.protocol === 'https:' ? https : http).get(u, { timeout, rejectUnauthorized: !isLocalUrl(u.href), headers: { accept: 'text/html,*/*' } }, (r) => { r.resume(); res(r.statusCode); });
     req.on('timeout', () => { req.destroy(); res(null); });
     req.on('error', () => res(null));
   });
@@ -84,26 +86,37 @@ async function probePort(port) {
   return null;
 }
 
-export const appInfo = (dir) => readJson(paths(dir).appJson);
-/** The address the user passed to an earlier command (detect-app <url>, run <url>), or null. */
-export const rememberedAddress = (dir) => { const a = readJson(paths(dir).addressJson); return a && /^https?:\/\//.test(a.url || '') ? a.url : null; };
+/**
+ * The app Pushreel started in this project, from .pushreel/app.json, or null. The file is not trusted: it counts
+ * only when its pid is a process of this user that Pushreel started (same start time, src/util.js ownsProcess),
+ * and its address is on this machine (or `allowRemote`). A cloned repository may carry a planted app.json.
+ */
+export function appInfo(dir, { allowRemote = false } = {}) {
+  const a = readJson(paths(dir).appJson);
+  if (!a || typeof a !== 'object' || !validPid(a.pid) || typeof a.url !== 'string' || !/^https?:\/\//.test(a.url)) return null;
+  if (!allowRemote && !isLocalUrl(a.url)) return null;
+  return { ...a, ours: ownsProcess(a) };
+}
+/** The address the user passed to an earlier command (detect-app <url>, run <url>), or null. A remote one needs `allowRemote`. */
+export const rememberedAddress = (dir, { allowRemote = false } = {}) => { const a = readJson(paths(dir).addressJson); return a && /^https?:\/\//.test(a.url || '') && (allowRemote || isLocalUrl(a.url)) ? a.url : null; };
 
 /**
  * Finds the running app. Order: explicit address, the app Pushreel started earlier, ports found in the project.
  * @returns {Promise<{ running: boolean, url?: string, startedByPushreel?: boolean, command: string|null, ports: number[], why: string[] }>}
  */
-export async function detectApp(dir, explicitUrl) {
+export async function detectApp(dir, explicitUrl, { allowRemote = false } = {}) {
   const info = inspectProject(dir);
   if (explicitUrl) {
     const url = explicitUrl.replace(/\/+$/, '');
+    checkAppUrl(url, { allowRemote, what: 'The app address' }); // before any request: a remote address needs --allow-remote
     const running = !!(await probe(url + '/'));
     // Remember the address the user passed: explore-shot, the Studio and resume use it without being told again.
     if (running) { ensureDir(paths(dir).state); writeJson(paths(dir).addressJson, { url, at: new Date().toISOString() }); }
     return { running, url, startedByPushreel: false, explicit: true, ...info };
   }
-  const mine = appInfo(dir);
-  if (mine && isAlive(mine.pid) && (await probe(mine.url + '/'))) return { running: true, url: mine.url, startedByPushreel: true, pid: mine.pid, ...info, command: mine.command };
-  const given = rememberedAddress(dir);
+  const mine = appInfo(dir, { allowRemote });
+  if (mine && mine.ours && (await probe(mine.url + '/'))) return { running: true, url: mine.url, startedByPushreel: true, pid: mine.pid, ...info, command: mine.command };
+  const given = rememberedAddress(dir, { allowRemote });
   if (given && (await probe(given + '/'))) return { running: true, url: given, startedByPushreel: false, remembered: true, ...info };
   for (const port of info.ports) { const url = await probePort(port); if (url) return { running: true, url, startedByPushreel: false, ...info }; }
   return { running: false, ...info };
@@ -141,12 +154,13 @@ export async function startApp(dir, { command, ports, assetPorts = [], timeoutMs
     if (url) break;
   }
   if (!url) {
-    killGroup(child.pid);
+    killGroup(child.pid); // the child of this very call: its pid is known first hand
     if (!hotBefore) { await sleep(600); await removeStaleHot(hotFile); }
     let tail = ''; try { tail = readFileSync(p.appLog, 'utf8').trim().split('\n').slice(-12).join('\n'); } catch { /* nothing */ }
     throw E.appNotStarted(command, tail);
   }
-  writeJson(p.appJson, { pid: child.pid, url, command, startedAt: new Date().toISOString(), ...(hotBefore ? {} : { hotFile }) });
+  // pidStart: the process's start time. stopApp signals the pid only while it still matches (src/util.js).
+  writeJson(p.appJson, { pid: child.pid, pidStart: processStart(child.pid), url, command, startedAt: new Date().toISOString(), ...(hotBefore ? {} : { hotFile }) });
   // The port answers before the app is whole: a dev server may still be building its scripts and styles.
   // Wait until the first page loads and every script and stylesheet it names answers.
   const ready = await firstPageReady(url, { timeoutMs: Math.max(3000, Math.min(20000, timeoutMs - (Date.now() - t0))), alive: () => exited === null });
@@ -188,36 +202,56 @@ export async function firstPageReady(url, { timeoutMs = 15000, alive = () => tru
   }
 }
 
+/** Signals the process group of a child this process has just spawned (never pid 0, 1 or a negative pid). */
 function killGroup(pid, signal = 'SIGTERM') {
-  try { process.kill(-pid, signal); return true; } catch { try { process.kill(pid, signal); return true; } catch { return false; } }
+  if (!validPid(pid)) return false;
+  try { process.kill(process.platform === 'win32' ? pid : -pid, signal); return true; } catch { return false; }
+}
+
+/** The only "hot" file Pushreel ever removes: <project>/public/hot, resolved, inside the project. Else null. Pure apart from realpath. */
+export function hotFileOf(dir, file) {
+  const want = resolve(dir, 'public', 'hot');
+  if (typeof file !== 'string' || resolve(dir, file) !== want || !insideDir(dir, want)) return null;
+  return want;
 }
 
 /** Removes a Vite "hot" file that the app Pushreel started left behind, only if the server it names is gone. */
 export async function removeStaleHot(file) {
   if (!file || !existsSync(file)) return false;
   let url = ''; try { url = readFileSync(file, 'utf8').trim(); } catch { return false; }
-  if (!/^https?:\/\//.test(url)) return false;
+  if (!/^https?:\/\//.test(url) || !isLocalUrl(url)) return false;
   for (let i = 0; i < 6; i++) { if (!(await probe(url + '/', 500))) { rmSync(file, { force: true }); return true; } await sleep(250); }
   return false;
 }
 
 /** Stops the app if, and only if, Pushreel started it. @returns {Promise<{ stopped: boolean, url?: string }>} */
+/**
+ * Stops the app if, and only if, Pushreel started it: .pushreel/app.json names a pid of this user whose start time
+ * still matches. A planted or stale app.json is removed without signalling anything.
+ * @returns {Promise<{ stopped: boolean, url?: string, command?: string, ignored?: string }>}
+ */
 export async function stopApp(dir) {
   const p = paths(dir), mine = readJson(p.appJson);
   if (!mine) return { stopped: false };
-  if (isAlive(mine.pid)) {
-    killGroup(mine.pid, 'SIGTERM');
-    for (let i = 0; i < 20 && isAlive(mine.pid); i++) await sleep(150);
-    if (isAlive(mine.pid)) { killGroup(mine.pid, 'SIGKILL'); await sleep(200); }
+  if (!ownsProcess(mine)) {
+    // Nothing is signalled. A Vite hot file at public/hot whose server is gone is still cleaned up: that is harmless.
+    const hot = hotFileOf(dir, mine && mine.hotFile);
+    if (hot) await removeStaleHot(hot);
+    rmSync(p.appJson, { force: true });
+    return { stopped: false, ignored: isAlive(mine.pid) ? 'not_ours' : 'gone' };
   }
-  await removeStaleHot(mine.hotFile);
+  signalOwned(mine, 'SIGTERM', { group: true });
+  for (let i = 0; i < 20 && isAlive(mine.pid); i++) await sleep(150);
+  if (isAlive(mine.pid)) { signalOwned(mine, 'SIGKILL', { group: true }); await sleep(200); }
+  const hot = hotFileOf(dir, mine.hotFile);
+  if (hot) await removeStaleHot(hot);
   rmSync(p.appJson, { force: true });
   return { stopped: true, url: mine.url, command: mine.command };
 }
 
 /** Uses the running app or starts it. */
-export async function ensureApp(dir, { url, log } = {}) {
-  const d = await detectApp(dir, url);
+export async function ensureApp(dir, { url, log, allowRemote = false } = {}) {
+  const d = await detectApp(dir, url, { allowRemote });
   if (d.running) return { url: d.url, startedByPushreel: !!d.startedByPushreel, command: d.command, already: true };
   if (d.explicit) throw new (await import('./errors.js')).PushreelError('app_not_reachable', {
     title: `Nothing answers at ${d.url}`, text: 'You passed this address, and no app responds there. Start your app, check the port, then run the command again.',

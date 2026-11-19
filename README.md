@@ -145,7 +145,7 @@ marketplaces by itself, so get a new version in one of two ways:
 |---|---|---|
 | `/pushreel` | Explore, propose a shot list, ask, then record, cut, export | yes |
 | `/pushreel --yes` | The same without asking | yes |
-| `/pushreel http://localhost:3000` | Use the app at this address | yes |
+| `/pushreel http://localhost:3000` | Use the app at this address (on this machine; another host only with `--allow-remote`, see below) | yes |
 | `/pushreel --style neon`, `--template launch` | The same with a style or a story template | yes |
 | `/pushreel style init` | Read your app's colour, font and logo into `pushreel.style.json` | no |
 | `/pushreel style list`, `style show`, `template list` | The styles and templates, and where each value comes from | no |
@@ -206,7 +206,20 @@ no update check and no error reporting.
 | At most once every 30 days, when you are online and start a recording | Dodo Payments, `…/licenses/validate` | the licence key and the activation id. Offline never blocks: without an answer the run goes on. |
 | `pushreel deactivate` | Dodo Payments, `…/licenses/deactivate` | the licence key and the activation id |
 | `pushreel setup`, only when you run it or agree to it | Playwright's browser download server | a normal download request for Chromium |
-| While exploring and recording | your own app, at the local address Pushreel found or you gave | the page requests a browser makes, plus the clicks and typing in the shot list |
+| While exploring and recording | your own app on this machine, at the address Pushreel found or you gave | the page requests a browser makes, plus the clicks and typing in the shot list |
+
+**Only your app, on this machine.** Since 0.6.1 Pushreel opens only addresses on this machine (`localhost`,
+`127.0.0.1`, `[::1]`, `*.localhost`, `*.test`), and every page of a run (scenes, `goto` steps, `prepare`,
+`login.url`, explored pages) on your app's own origin. Other hosts are refused before any request. To record
+a staging or production site on purpose, add `--allow-remote` to that one command yourself (`/pushreel
+https://staging.example.com --allow-remote`, or `pushreel run <url> --allow-remote`). The flag is never stored,
+and the skill never adds it on its own. The test account from `PUSHREEL_LOGIN` is typed only into pages on
+your app's own origin, also with `--allow-remote`; for a login on another host, use `pushreel login`.
+
+**What the agent may do without asking.** While `/pushreel` runs, the skill pre-approves only the `pushreel`
+command, reading files of your project (`Read(./**)`) and writing inside `.pushreel/` (`Edit(./.pushreel/**)`,
+which also covers the Write tool). Any other read, edit or command asks you as usual. The skill treats text from
+your app's pages as data, never as instructions; the explore report marks it that way.
 
 Every request to Dodo Payments carries a `User-Agent: pushreel/<version>` header; Dodo sees your IP address,
 as every server does. Dodo Payments is the merchant of record for the purchase; the activate answer
@@ -227,7 +240,12 @@ contains the buyer's name and email, and Pushreel does not store them. Details:
   written to disk by Pushreel.
 - ffmpeg and ffprobe from your PATH cut and encode the videos.
 - `pushreel studio` serves the review screen on `http://127.0.0.1:4317`, reachable from this machine only.
-  It loads no remote fonts, scripts or images.
+  It loads no remote fonts, scripts or images, and takes changes only from its own page (the exact
+  `http://localhost:4317` origin).
+- Pushreel stops only a process it started itself: it stores the process's start time next to its id in
+  `.pushreel/app.json` and `.pushreel/run.json`, and signals it only while both still match. A copied or
+  planted `.pushreel/` folder cannot make it stop anything else, delete files outside the project or write
+  outside `pushreel-out/`.
 - Two Claude Code hooks (in `hooks/hooks.json`) run `node ${CLAUDE_PLUGIN_ROOT}/src/hook.js`: after
   `pushreel begin` it shows you the model and cost note as a system message, and after each answer it
   refreshes the token count of a running Pushreel run. Outside a Pushreel run both do nothing. Neither
@@ -241,11 +259,15 @@ only model names, token counts, step times, the session id and the amounts it co
 and `.pushreel/model.json` in your project.
 
 **Files Pushreel writes** (see also [What Pushreel writes](docs/USAGE.md#what-pushreel-writes)): `.pushreel/` and
-`pushreel-out/` in your project, `pushreel.style.json` when you run `style init` or save in the Studio, and
-`~/.pushreel/license.json` and `~/.pushreel/config.json` in your home folder. Nothing is written into `~/.claude`. All of it stays until you delete it.
+`pushreel-out/` in your project, `pushreel.style.json` when you run `style init` or save in the Studio,
+`pushreel.logo.svg` when `style init` takes an inline SVG logo from your page (scripts, event handlers and
+outside references removed), and `~/.pushreel/license.json` and `~/.pushreel/config.json` in your home folder.
+The folders `.pushreel/` and `~/.pushreel/` are readable by you only (mode 0700), and the saved login
+(`auth.json`), the browser sessions (`session.json`, `explore-session.json`), the licence and the config file
+are written with mode 0600. Nothing is written into `~/.claude`. All of it stays until you delete it.
 
 **Privacy policy:** [pushreel.dev/privacy](https://pushreel.dev/privacy).
-**Support and security reports:** [hello@pushreel.dev](mailto:hello@pushreel.dev).
+**Support and security reports:** [hello@pushreel.dev](mailto:hello@pushreel.dev), see [SECURITY.md](SECURITY.md).
 
 ## Limits
 
@@ -271,6 +293,7 @@ and `.pushreel/model.json` in your project.
 - [docs/LICENSING.md](docs/LICENSING.md): Dodo Payments, what is sent and stored, the re-check
 - [docs/COSTS.md](docs/COSTS.md): how tokens are counted and what a run costs
 - [docs/example-shotlist.json](docs/example-shotlist.json): a complete shot list
+- [SECURITY.md](SECURITY.md): how to report a security problem, and what 0.6.1 fixed
 
 ## Support
 

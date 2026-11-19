@@ -4,14 +4,15 @@ import http from 'node:http';
 import { createReadStream, existsSync, statSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, extname, basename, resolve, sep } from 'node:path';
 import { spawn } from 'node:child_process';
-import { paths, readJson, writeJson, PLUGIN_ROOT, VERSION, isAlive, ensureDir, readEnvFiles } from '../util.js';
+import { paths, readJson, writeJson, PLUGIN_ROOT, VERSION, ownsProcess, signalOwned, ensureDir, readEnvFiles } from '../util.js';
+import { isLocalUrl } from '../origin.js';
 import { validate, normalize, sceneHash, totalSeconds, prepareShotlist } from '../shotlist.js';
 import { resolveStyle, styleLine, readProjectStyle, projectStyleFile, projectFile, validateStyle, SPEC, BUNDLED_FONTS, builtinNames, libraryNames, PROJECT_STYLE, FONT_EXT, IMAGE_EXT } from '../style.js';
-import { captionPage, endCardPage, coverPage, introPage } from '../render.js';
+import { captionPage, endCardPage, coverPage, introPage, cssStr } from '../render.js';
 import { PLATFORMS, PLATFORM_KEYS, FRAME, END_CARD_SECONDS, LAST_CHECKED } from '../presets.js';
 import { status as licenceStatus } from '../license.js';
 import { appInfo, probe, inspectProject } from '../detect.js';
-import { cancel, readRun } from '../pipeline.js';
+import { cancel, readRun, safeOutDir } from '../pipeline.js';
 import { loadPrices, priceFor } from '../cost.js';
 import { estimates, lastModelNote } from '../model.js';
 import { dontAskModels, rememberModel } from '../userconfig.js';
@@ -40,8 +41,8 @@ function styleState(dir, draft) {
   };
 }
 
-export async function buildState(dir) {
-  const p = paths(dir), raw = readJson(p.shotlist), run = readRun(dir), app = appInfo(dir);
+export async function buildState(dir, { allowRemote = false } = {}) {
+  const p = paths(dir), raw = readJson(p.shotlist), run = readRun(dir), mine = appInfo(dir, { allowRemote }), app = mine && mine.ours ? mine : null;
   const state = { version: VERSION, project: { name: basename(dir), dir }, frame: FRAME, endCardSeconds: END_CARD_SECONDS, platforms: PLATFORMS, platformKeys: PLATFORM_KEYS, presetsChecked: LAST_CHECKED };
   state.licence = licenceStatus();
   state.shotlist = null; state.errors = []; state.warnings = []; state.stills = {}; state.recorded = {};
@@ -57,11 +58,12 @@ export async function buildState(dir) {
     }
     state.total = totalSeconds(s, (run && run.status !== 'done' && run.skip) || []);
   }
-  if (run) { run.alive = !!(run.pid && isAlive(run.pid)); if (!run.alive && ['recording', 'cutting', 'exporting'].includes(run.status)) run.status = 'interrupted'; }
+  if (run) { run.alive = ownsProcess(run); if (!run.alive && ['recording', 'cutting', 'exporting'].includes(run.status)) run.status = 'interrupted'; }
   state.run = run;
   const info = inspectProject(dir);
-  state.app = app ? { url: app.url, startedByPushreel: true, command: app.command, running: isAlive(app.pid) } : { url: (run && run.baseUrl) || (info.ports[0] ? `http://localhost:${info.ports[0]}` : null), startedByPushreel: false, command: info.command, running: null };
-  if (!app && state.app.url) state.app.running = !!(await probe(state.app.url + '/', 600));
+  state.app = app ? { url: app.url, startedByPushreel: true, command: app.command, running: true } : { url: (run && typeof run.baseUrl === 'string' && (allowRemote || isLocalUrl(run.baseUrl)) && run.baseUrl) || (info.ports[0] ? `http://localhost:${info.ports[0]}` : null), startedByPushreel: false, command: info.command, running: null };
+  // run.json is not trusted: only an address on this machine is probed (or any, with studio --allow-remote).
+  if (!app && state.app.url && (allowRemote || isLocalUrl(state.app.url))) state.app.running = !!(await probe(state.app.url + '/', 600));
   // The cost of a run belongs to the session that made it. A report written before the current run started
   // (an earlier, unrelated run) is not shown next to it.
   const cost = readJson(p.costJson);
@@ -75,8 +77,8 @@ export async function buildState(dir) {
   // The style of the next run, with what it changes in the plan: end card length, intro card (src/style.js).
   if (raw) { const pr = prepareShotlist(raw, dir); const st = pr.style.style; state.style = { line: styleLine(pr.style), errors: pr.style.errors, endSeconds: st.endCard ? st.endCard.duration : END_CARD_SECONDS, introSeconds: st.intro && st.intro.enabled ? st.intro.duration : 0, endCard: !!(st.endCard && st.endCard.enabled), look: st, template: pr.template.name }; if (pr.shotlist && state.shotlist) { state.shotlist.cut.zoom = pr.shotlist.cut.zoom; state.shotlist.cut.endCard = pr.shotlist.cut.endCard; } state.endCardSeconds = state.style.endSeconds; state.total = pr.shotlist ? totalSeconds(pr.shotlist, (run && run.status !== 'done' && run.skip) || []) : state.total; }
   state.loginSet = !!(process.env.PUSHREEL_LOGIN || readEnvFiles(dir).PUSHREEL_LOGIN) || existsSync(p.auth);
-  state.outDir = run && run.outDir ? `./${run.outDir}/` : null;
-  state.files = run && run.status === 'done' ? run.files.map((f) => ({ ...f, src: `/media/out/${f.name}?v=${encodeURIComponent(run.finishedAt || '')}` })) : [];
+  state.outDir = run && safeOutDir(p, run.outDir) ? `./${run.outDir}/` : null;
+  state.files = run && run.status === 'done' && state.outDir && Array.isArray(run.files) ? run.files.map((f) => ({ ...f, src: `/media/out/${f.name}?v=${encodeURIComponent(run.finishedAt || '')}` })) : [];
   return state;
 }
 
@@ -105,11 +107,13 @@ const readBody = (req) => new Promise((ok, bad) => {
   req.on('end', () => { try { ok(b ? JSON.parse(b) : {}); } catch { bad(new Error('The request body is not valid JSON.')); } });
 });
 
-export async function startStudio(dir, { port = 4317, entry = join(PLUGIN_ROOT, 'bin', 'pushreel') } = {}) {
-  const p = paths(dir);
+export async function startStudio(dir, { port = 4317, entry = join(PLUGIN_ROOT, 'bin', 'pushreel'), allowRemote = false } = {}) {
+  const p = paths(dir), st = () => buildState(dir, { allowRemote });
+  // Writes are taken only from the Studio's own page: its exact origin, on this port.
+  const ORIGINS = [`http://localhost:${port}`, `http://127.0.0.1:${port}`, `http://[::1]:${port}`];
   let child = null, lastOutput = [];
   const clients = new Set();
-  const push = async () => { if (!clients.size) return; const data = `event: state\ndata: ${JSON.stringify(await buildState(dir))}\n\n`; for (const c of clients) c.write(data); };
+  const push = async () => { if (!clients.size) return; const data = `event: state\ndata: ${JSON.stringify(await st())}\n\n`; for (const c of clients) c.write(data); };
   let lastSig = '';
   const timer = setInterval(() => {
     let sig = '';
@@ -122,6 +126,7 @@ export async function startStudio(dir, { port = 4317, entry = join(PLUGIN_ROOT, 
   const startRun = (mode, skip) => {
     const args = [join(PLUGIN_ROOT, 'src', 'cli.js'), mode, '--project', dir];
     if (skip && skip.length) args.push('--skip', skip.join(','));
+    if (allowRemote) args.push('--allow-remote'); // only when the user started the Studio with it
     lastOutput = [];
     child = spawn(process.execPath, [entry, ...args.slice(1)], { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'], env: process.env });
     const keep = (d) => { lastOutput.push(...String(d).split('\n').filter(Boolean)); lastOutput = lastOutput.slice(-80); };
@@ -137,20 +142,20 @@ export async function startStudio(dir, { port = 4317, entry = join(PLUGIN_ROOT, 
       const url = new URL(req.url, 'http://localhost'), path = decodeURIComponent(url.pathname);
       if (req.method !== 'GET' && req.method !== 'HEAD') {
         const origin = req.headers.origin;
-        if (origin && !/^http:\/\/(localhost|127\.0\.0\.1|\[::1\]):\d+$/.test(origin)) return send(res, 403, { error: 'Cross-site requests are refused.' });
+        if (!origin || !ORIGINS.includes(origin)) return send(res, 403, { error: 'Only the Studio page itself may change things: cross-site requests and requests without an Origin are refused.' });
         if (!/^application\/json/.test(req.headers['content-type'] || '')) return send(res, 415, { error: 'Send JSON.' });
       }
       if (req.method === 'GET' && PAGES[path]) return sendFile(req, res, PUBLIC, PAGES[path]);
-      if (req.method === 'GET' && path === '/api/state') return send(res, 200, await buildState(dir));
+      if (req.method === 'GET' && path === '/api/state') return send(res, 200, await st());
       if (req.method === 'GET' && path === '/api/events') {
         res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
-        res.write(`event: state\ndata: ${JSON.stringify(await buildState(dir))}\n\n`);
+        res.write(`event: state\ndata: ${JSON.stringify(await st())}\n\n`);
         clients.add(res); req.on('close', () => clients.delete(res));
         return;
       }
       if (req.method === 'GET' && path === '/api/log') return send(res, 200, { lines: existsSync(p.runLog) ? readFileSync(p.runLog, 'utf8').trim().split('\n').slice(-60) : [], output: lastOutput });
       if (req.method === 'PUT' && path === '/api/shotlist') {
-        const body = await readBody(req), v = validate(body);
+        const body = await readBody(req), v = validate(body, { allowRemote });
         if (v.errors.length) return send(res, 422, { ok: false, errors: v.errors, warnings: v.warnings });
         // The Studio shows the style's zoom and end card in the shot list's switches. A value the file did not have
         // and the user did not change is not written into it: the style keeps deciding it.
@@ -159,16 +164,17 @@ export async function startStudio(dir, { port = 4317, entry = join(PLUGIN_ROOT, 
         ensureDir(p.state); writeJson(p.shotlist, body);
         // keep captions.md in the finished folder in step with edited post texts
         const run = readRun(dir);
-        if (run && run.status === 'done' && run.outDir && existsSync(join(dir, run.outDir))) {
+        const out = run && run.status === 'done' ? safeOutDir(p, run.outDir) : null; // never outside pushreel-out/
+        if (out && existsSync(out)) {
           const s = normalize(body);
-          writeFileSync(join(dir, run.outDir, 'captions.md'), captionsMd(s, run.video || null));
-          writeJson(join(dir, run.outDir, 'shotlist.json'), body);
+          writeFileSync(join(out, 'captions.md'), captionsMd(s, run.video || null));
+          writeJson(join(out, 'shotlist.json'), body);
         }
-        return send(res, 200, { ok: true, warnings: v.warnings, state: await buildState(dir) });
+        return send(res, 200, { ok: true, warnings: v.warnings, state: await st() });
       }
       if (req.method === 'POST' && path === '/api/run') {
         const body = await readBody(req), run = readRun(dir);
-        if (child || (run && run.pid && isAlive(run.pid))) return send(res, 409, { ok: false, error: 'A run is already working.' });
+        if (child || (run && ownsProcess(run))) return send(res, 409, { ok: false, error: 'A run is already working.' });
         const mode = ['run', 'resume', 'rerender'].includes(body.mode) ? body.mode : 'run';
         startRun(mode, Array.isArray(body.skip) ? body.skip.filter(Number.isInteger) : []);
         return send(res, 202, { ok: true, mode });
@@ -177,17 +183,17 @@ export async function startStudio(dir, { port = 4317, entry = join(PLUGIN_ROOT, 
         const body = await readBody(req), price = priceFor(loadPrices(), typeof body.id === 'string' ? body.id : '');
         if (!price) return send(res, 422, { ok: false, error: 'Unknown model.' });
         rememberModel(price.id);
-        return send(res, 200, { ok: true, state: await buildState(dir) });
+        return send(res, 200, { ok: true, state: await st() });
       }
       if (req.method === 'POST' && path === '/api/stop') {
         const run = readRun(dir);
-        if (child) child.kill('SIGTERM'); else if (run && run.pid && isAlive(run.pid)) process.kill(run.pid, 'SIGTERM');
+        if (child) child.kill('SIGTERM'); else if (run) signalOwned(run, 'SIGTERM');
         return send(res, 200, { ok: true });
       }
       if (req.method === 'POST' && path === '/api/cancel') {
         if (child) child.kill('SIGTERM');
         const r = await cancel(dir);
-        return send(res, 200, { ok: true, ...r, state: await buildState(dir) });
+        return send(res, 200, { ok: true, ...r, state: await st() });
       }
       if (req.method === 'GET' && path === '/api/style') return send(res, 200, styleState(dir));
       if (req.method === 'POST' && path === '/api/style/preview') {
@@ -198,7 +204,7 @@ export async function startStudio(dir, { port = 4317, entry = join(PLUGIN_ROOT, 
         const o = { projectDir: dir, urls: studioUrls }, app = (sl && sl.app) || { name: basename(dir) };
         const scene = sl && (sl.scenes.find((x) => x.include && x.caption) || sl.scenes[0]);
         const text = typeof body.text === 'string' && body.text.trim() ? body.text.slice(0, 120) : (scene && scene.caption) || 'Every square is a day you showed up.';
-        const frame = st.frame ? st.frame.src : '', bg = frame ? `html, body { background: #0e0a1f url('${frame}') center / cover no-repeat; }` : 'html, body { background: #e6e8ef; }';
+        const frame = st.frame ? st.frame.src : '', bg = frame ? `html, body { background: #0e0a1f url('${cssStr(frame)}') center / cover no-repeat; }` : 'html, body { background: #e6e8ef; }';
         const platform = PLATFORM_KEYS.includes(body.platform) ? body.platform : 'short';
         const headline = sl && sl.cover && typeof sl.cover.headline === 'string' ? sl.cover.headline : (scene && scene.caption) || '';
         const pages = {
@@ -228,7 +234,7 @@ export async function startStudio(dir, { port = 4317, entry = join(PLUGIN_ROOT, 
       }
       if (req.method === 'GET' && path.startsWith('/media/stills/')) return sendFile(req, res, p.stills, path.slice('/media/stills/'.length));
       if (req.method === 'GET' && path.startsWith('/media/failed/')) return sendFile(req, res, p.failed, path.slice('/media/failed/'.length));
-      if (req.method === 'GET' && path.startsWith('/media/out/')) { const run = readRun(dir); if (!run || !run.outDir) return send(res, 404, { error: 'no output yet' }); return sendFile(req, res, join(dir, run.outDir), path.slice('/media/out/'.length)); }
+      if (req.method === 'GET' && path.startsWith('/media/out/')) { const run = readRun(dir), out = run && safeOutDir(p, run.outDir); if (!out) return send(res, 404, { error: 'no output yet' }); return sendFile(req, res, out, path.slice('/media/out/'.length)); }
       if (req.method === 'GET') return sendFile(req, res, PUBLIC, path.replace(/^\/+/, ''));
       send(res, 404, { error: 'not found' });
     } catch (e) { send(res, 400, { ok: false, error: String(e.message || e) }); }

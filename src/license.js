@@ -69,7 +69,7 @@ export function offlineNote(provider) {
 const seal = (r) => createHmac('sha256', r.machine)
   .update([r.key, r.provider, r.activatedAt, r.instanceId || '', r.devOnly ? 'dev' : '', r.mode || '', r.lastValidatedAt || '', r.lastAttemptAt || '', r.revoked ? `${r.revoked.at}:${r.revoked.code}` : ''].join('|'))
   .digest('hex').slice(0, 32);
-const save = (r) => { r.seal = seal(r); writeJson(licenceFile(), r); return r; };
+const save = (r) => { r.seal = seal(r); writeJson(licenceFile(), r, { secret: true }); return r; };
 export const maskKey = (k) => { const s = String(k); return s.length > 10 ? `${s.slice(0, 4)}····${s.slice(-4)}` : '····'; };
 
 /** The providers of a shipped build: a fixed list, no dynamic path. */

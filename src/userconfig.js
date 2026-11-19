@@ -9,7 +9,7 @@ export function readUserConfig() {
   const c = readJson(userConfigFile(), {});
   return c && typeof c === 'object' && !Array.isArray(c) ? c : {};
 }
-export function writeUserConfig(c) { writeJson(userConfigFile(), c); return c; }
+export function writeUserConfig(c) { writeJson(userConfigFile(), c, { secret: true }); return c; }
 
 /** Model ids the user chose "don't ask again" for. */
 export const dontAskModels = () => { const m = readUserConfig().model; return m && Array.isArray(m.dontAsk) ? m.dontAsk.filter((x) => typeof x === 'string') : []; };

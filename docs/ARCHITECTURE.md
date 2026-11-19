@@ -21,6 +21,7 @@ bin/pushreel                      the CLI entry
 src/cli.js                        every command
 src/pipeline.js                   record → cut → export, run state, pause, resume, cancel
 src/detect.js                     find the running app, start it, stop it
+src/origin.js                     which addresses may be opened: the app on this machine, --allow-remote
 src/browser.js                    Chromium launch at 1080×1920, visible cursor, step executor, smooth scroll, layout capture, prepare, login form
 src/record.js                     records scenes in one browser context, saves the session, retries with doubled waits
 src/session.js                    the saved browser session (pure): auth.json, session.json, prepare, .gitignore advice
@@ -248,12 +249,34 @@ port answers, and remembers the process in `.pushreel/app.json`. Ports that alre
 start are never taken for the app. Only an app recorded in `app.json` is ever stopped (`run` at the end,
 `cancel`, `stop-app`).
 
+The files in `.pushreel/` are not trusted (a cloned repository may carry them). Since 0.6.1:
+
+- **Process ownership.** `app.json` and `run.json` store `pid` and `pidStart`, the process start time the
+  system reports (`ps -o lstart= -p <pid>` with `LC_ALL=C TZ=UTC` on macOS and Linux, PowerShell's
+  `Get-Process` `StartTime` on Windows). `src/util.js` `signalOwned` signals only a whole pid above 1 that is
+  not Pushreel itself, of this user (EPERM counts as not alive), whose start time still matches. A recycled or
+  planted pid is never signalled; there is no fallback from the group to another target. The app's group is
+  signalled as `-pid` only after that check. Chosen over a token in the child's environment because reading
+  another process's environment is not portable, while the start time is. A record without `pidStart`
+  (written by 0.6.0) is not stopped.
+- **Paths.** The Vite hot file is removed only at `<project>/public/hot` (real path inside the project), and
+  only when the local server it names is gone. `run.outDir` is used (resume, rerender, Studio save,
+  `/media/out/`) only when it resolves inside `<project>/pushreel-out/`, symbolic links included.
+- **Addresses** (`src/origin.js`). Every address is pinned to the app on this machine: `localhost`,
+  `*.localhost`, `127.0.0.0/8`, `[::1]`, `0.0.0.0`, `*.test`. Explicit URLs of `run`, `begin`, `detect-app`,
+  `explore-shot`, `login` and `style init` are checked before any request; remembered addresses
+  (`address.json`, `app.json`, `run.json`) that are not local are ignored; every scene, `goto`, `prepare` and
+  `login.url` must be on the app's origin (validator, pipeline, and again in `navigate()` before the browser
+  opens it). `--allow-remote` lifts this for one command; it is never stored. `PUSHREEL_LOGIN` is typed only
+  when the page's origin equals the app's (`runStep`), with or without the flag.
+
 ## Studio
 
 `pushreel studio` serves `src/studio/public/` on 127.0.0.1:4317. Markup and styles are the approved
 prototype; `studio.js` replaces the prototype's mock data with `/api/state` and `/api/events`.
 "Record and export" starts the same CLI pipeline as a child process; the page follows `run.json`.
-The server refuses requests with a foreign `Host` header and cross-site writes. Fonts are in
+The server refuses requests with a foreign `Host` header, and writes whose `Origin` is not exactly the
+Studio's own (`http://localhost:<port>`, `http://127.0.0.1:<port>`, `http://[::1]:<port>`) or missing. Fonts are in
 `public/fonts/`; the pages load nothing from the network.
 
 ## Decisions

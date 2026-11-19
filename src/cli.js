@@ -54,6 +54,12 @@ Tools the agent uses while exploring
 Review
   studio [--port 4317] [--no-open]         local review screen, bound to 127.0.0.1
 
+Addresses
+  Pushreel opens only your app on this machine (localhost, 127.0.0.1, [::1], *.localhost, *.test), and every
+  page of a run on the app's own origin. --allow-remote on run, resume, rerender, explore-shot, detect-app,
+  begin, login, style init and studio lets that one command open another host (a staging site). Type it
+  yourself; it is never stored, and the /pushreel skill never adds it on its own.
+
 Before a run (the agent calls these)
   model-check [--session <id>] [--model <id>] [--yes]   which model the session runs, the estimated cost of a run,
                                            and whether to ask "continue or switch?"
@@ -79,7 +85,7 @@ function parse(argv) {
     if (a.startsWith('--')) {
       const [k, v] = a.slice(2).split(/=(.*)/s);
       if (v !== undefined) opt[k] = v;
-      else if (['json', 'yes', 'start', 'no-open', 'help', 'fresh', 'force', 'login', 'no-project-style'].includes(k) || i + 1 >= argv.length || argv[i + 1].startsWith('--')) opt[k] = true;
+      else if (['json', 'yes', 'start', 'no-open', 'help', 'fresh', 'force', 'login', 'no-project-style', 'allow-remote'].includes(k) || i + 1 >= argv.length || argv[i + 1].startsWith('--')) opt[k] = true;
       else opt[k] = argv[++i];
     } else pos.push(a);
   }
@@ -153,7 +159,7 @@ async function dispatch(cmd, pos, opt, dir) {
       const r = await cancel(dir);
       if (!r.hadRun && !r.stopped.stopped) { out('Nothing to cancel: there is no run in this project and Pushreel has no app running.'); return 0; }
       out('Run cancelled.');
-      out(r.stopped.stopped ? `● Stopped the app Pushreel started ("${r.stopped.command}", ${r.stopped.url}). The port is free again.` : '● Pushreel had not started your app, so nothing was stopped.');
+      out(r.stopped.stopped ? `● Stopped the app Pushreel started ("${r.stopped.command}", ${r.stopped.url}). The port is free again.` : r.stopped.ignored === 'not_ours' ? '● .pushreel/app.json named a process that Pushreel cannot prove it started (no matching start time), so nothing was stopped. Stop your app yourself if it still runs.' : '● Pushreel had not started your app, so nothing was stopped.');
       out(`● Kept: ${r.kept.length ? `recorded scene${r.kept.length > 1 ? 's' : ''} ${r.kept.join(', ')}` : 'no recorded scenes'}${r.shotlist ? ' and .pushreel/shotlist.json' : ''}.`);
       out('Start again any time: pushreel rerender (reuses the recorded scenes) or pushreel run (records everything again).');
       return 0;
@@ -169,7 +175,7 @@ async function dispatch(cmd, pos, opt, dir) {
 
     case 'detect-app': {
       const { detectApp, startApp } = await import('./detect.js');
-      let d = await detectApp(dir, pos[0]);
+      let d = await detectApp(dir, pos[0], { allowRemote: remote(opt) });
       if (!d.running && opt.start && !d.explicit) { const s = await startApp(dir, { command: d.command, ports: d.ports, assetPorts: d.assetPorts, log: opt.json ? () => {} : out }); d = { ...d, running: true, ...s, justStarted: true }; }
       if (opt.json) out(JSON.stringify(d, null, 2));
       else if (d.running) out(d.justStarted ? `App is up at ${d.url}. Pushreel started it with "${d.command}" and stops it at the end of the run.` : `App is running at ${d.url}${d.startedByPushreel ? ' (started by Pushreel)' : `${d.remembered ? ' (the address you passed earlier)' : ''}. Pushreel uses it and leaves it running`}.`);
@@ -178,7 +184,7 @@ async function dispatch(cmd, pos, opt, dir) {
     }
     case 'stop-app': {
       const r = await (await import('./detect.js')).stopApp(dir);
-      out(r.stopped ? `Stopped the app Pushreel started (${r.url}).` : 'Pushreel has not started an app in this project. Nothing was stopped.');
+      out(r.stopped ? `Stopped the app Pushreel started (${r.url}).` : r.ignored === 'not_ours' ? '.pushreel/app.json named a process that Pushreel cannot prove it started (no matching start time). Nothing was stopped; the file was removed.' : 'Pushreel has not started an app in this project. Nothing was stopped.');
       return 0;
     }
     case 'begin': {
@@ -191,7 +197,7 @@ async function dispatch(cmd, pos, opt, dir) {
       const { checkModel } = await import('./model.js');
       const note = await checkModel(dir, { sessionId: session, modelId: typeof opt.model === 'string' ? opt.model : undefined, yes: !!opt.yes });
       const { detectApp, startApp } = await import('./detect.js');
-      let d = await detectApp(dir, pos[0]), appLine;
+      let d = await detectApp(dir, pos[0], { allowRemote: remote(opt) }), appLine;
       try {
         if (!d.running && !d.explicit) { const s = await startApp(dir, { command: d.command, ports: d.ports, assetPorts: d.assetPorts, log: () => {} }); d = { ...d, running: true, ...s, justStarted: true }; }
         appLine = d.running ? (d.justStarted ? `App: up at ${d.url}. Pushreel started it with "${d.command}" and stops it at the end of the run.` : `App: running at ${d.url}. Pushreel uses it and leaves it running.`) : `App: nothing answers at ${d.url}. Ask the user to start the app or to pass its address, and stop.`;
@@ -211,17 +217,17 @@ async function dispatch(cmd, pos, opt, dir) {
       const { detectApp } = await import('./detect.js');
       const { loginInteractive, loginScript, savedMessage } = await import('./login.js');
       let base = null, start = '/';
-      if (pos[0] && /^https?:\/\//.test(pos[0])) { const u = new URL(pos[0]); base = u.origin; start = u.pathname + u.search; }
+      if (pos[0] && /^https?:\/\//.test(pos[0])) { const u = new URL(pos[0]); (await import('./origin.js')).checkAppUrl(u.href, { allowRemote: remote(opt), what: 'The login address' }); base = u.origin; start = u.pathname + u.search; }
       else {
         // No address given: use the running app, or start it. It is left running: a login in a stopped app may be gone.
-        const app = await (await import('./detect.js')).ensureApp(dir, { log: out });
+        const app = await (await import('./detect.js')).ensureApp(dir, { log: out, allowRemote: remote(opt) });
         base = app.url; if (pos[0]) start = pos[0];
         if (!app.already) out(`Pushreel started your app for the login (${app.url}) and leaves it running. The next run uses it and stops it at the end; "pushreel stop-app" stops it now.`);
       }
       if (pos[0] && /^https?:\/\//.test(pos[0])) { ensureDir(p.state); writeJson(p.addressJson, { url: base, at: new Date().toISOString() }); }
       const r = typeof opt.script === 'string'
-        ? await loginScript(dir, { baseUrl: base, url: start !== '/' ? start : undefined, scriptFile: resolve(opt.script) })  // the script's own start address wins over a bare origin
-        : await loginInteractive(dir, { baseUrl: base, url: start, say: out, input: process.stdin, timeoutMs: opt.timeout ? Number(opt.timeout) * 1000 : undefined });
+        ? await loginScript(dir, { baseUrl: base, url: start !== '/' ? start : undefined, scriptFile: resolve(opt.script), allowRemote: remote(opt) })  // the script's own start address wins over a bare origin
+        : await loginInteractive(dir, { baseUrl: base, url: start, say: out, input: process.stdin, timeoutMs: opt.timeout ? Number(opt.timeout) * 1000 : undefined, allowRemote: remote(opt) });
       if (r.why === 'timeout') out('The window was open for a long time, so Pushreel saved what was there and closed it.');
       out(savedMessage(dir, r.saved, { how: r.why === 'script' ? 'script' : 'hand' }));
       return 0;
@@ -244,15 +250,20 @@ async function dispatch(cmd, pos, opt, dir) {
         if (!Array.isArray(shots) || !shots.length || shots.some((s) => !s || typeof s.url !== 'string')) throw E.invalidShotlist(['--batch must be a list of objects with "url" (and optional "name", "steps", "requiresLogin").']);
         if (shots.length > 8) throw E.invalidShotlist([`--batch has ${shots.length} pages. Look at 8 at most in one call.`]);
       }
-      let base = opt.base;
+      // The pages explored are pages of the app: an address on this machine, and every page on that one origin.
+      // Another host only with --allow-remote, typed by the user (src/origin.js).
+      const { checkAppUrl, checkTarget } = await import('./origin.js');
+      let base = typeof opt.base === 'string' ? opt.base : null;
       const firstUrl = shots ? shots[0].url : pos[0];
       if (!base && /^https?:\/\//.test(firstUrl)) base = new URL(firstUrl).origin;
-      if (!base) { const d = await detectApp(dir); if (!d.running) throw E.appNotRunning(d.command, d.ports); base = d.url; }
+      if (base) checkAppUrl(base, { allowRemote: remote(opt), what: 'The page' });
+      if (!base) { const d = await detectApp(dir, undefined, { allowRemote: remote(opt) }); if (!d.running) throw E.appNotRunning(d.command, d.ports); base = d.url; }
+      for (const u of shots ? shots.map((x) => x.url) : pos) checkTarget(u, base, { allowRemote: remote(opt), what: 'The page' });
       let steps = [];
       if (opt.steps) { try { steps = JSON.parse(opt.steps); } catch { throw E.invalidShotlist(['--steps is not valid JSON. It must be a list like [{"do":"click","selector":"#save"}].']); } }
       const sl = readJson(p.shotlist);
       if (!shots) shots = pos.map((url, i) => ({ url, steps: pos.length === 1 ? steps : [], name: pos.length === 1 ? opt.name : opt.name ? `${opt.name}-${i + 1}` : undefined, requiresLogin: !!opt.login }));
-      const reps = await exploreShots(dir, { baseUrl: base, shots, login: sl && sl.login, consent: opt.consent === 'accept' ? 'accept' : 'reject', viewportWidth: opt.viewport ? Number(opt.viewport) : (sl && sl.viewport && sl.viewport.width) || 360 });
+      const reps = await exploreShots(dir, { baseUrl: base, allowRemote: remote(opt), shots, login: sl && sl.login, consent: opt.consent === 'accept' ? 'accept' : 'reject', viewportWidth: opt.viewport ? Number(opt.viewport) : (sl && sl.viewport && sl.viewport.width) || 360 });
       for (const rep of reps) rep.still = './' + relative(dir, rep.still);
       out(JSON.stringify(reps.length === 1 ? reps[0] : reps, null, opt.json ? 2 : 1));
       return reps.every((r) => r.ok) ? 0 : 1;
@@ -313,7 +324,7 @@ async function dispatch(cmd, pos, opt, dir) {
 
     case 'studio': {
       const { startStudio } = await import('./studio/server.js');
-      const s = await startStudio(dir, { port: opt.port ? Number(opt.port) : 4317, entry: SELF });
+      const s = await startStudio(dir, { port: opt.port ? Number(opt.port) : 4317, entry: SELF, allowRemote: remote(opt) });
       out(`Studio is running at ${s.url}  (only on this machine). Press Ctrl+C to stop it.`);
       if (!opt['no-open'] && process.stdout.isTTY) spawnSync(process.platform === 'darwin' ? 'open' : 'xdg-open', [s.url], { stdio: 'ignore' });
       return new Promise(() => {});
@@ -426,7 +437,9 @@ async function dispatch(cmd, pos, opt, dir) {
 }
 
 /** --style, --template, --no-project-style of a command. */
-const lookOpts = (opt) => ({ style: typeof opt.style === 'string' ? opt.style : undefined, template: typeof opt.template === 'string' ? opt.template : undefined, noProjectStyle: !!opt['no-project-style'] });
+const lookOpts = (opt) => ({ style: typeof opt.style === 'string' ? opt.style : undefined, template: typeof opt.template === 'string' ? opt.template : undefined, noProjectStyle: !!opt['no-project-style'], allowRemote: !!opt['allow-remote'] });
+/** --allow-remote: typed by the user on this command. Never stored, never read from a file. */
+const remote = (opt) => !!opt['allow-remote'];
 
 /**
  * The style and template part of `begin`: checks the names, remembers them for this project (.pushreel/choice.json,
@@ -482,7 +495,8 @@ async function styleCommand(pos, opt, dir) {
     if (existsSync(file) && !opt.force) { out(`${S.PROJECT_STYLE} exists already. Change single values with: pushreel style set <key=value>. Read the app again and replace it: pushreel style init --force`); return 1; }
     const { detectApp, ensureApp, stopApp } = await import('./detect.js');
     let url = pos[0] && /^https?:\/\//.test(pos[0]) ? new URL(pos[0]).origin : null, started = false;
-    if (!url) { const d = await detectApp(dir); if (d.running) url = d.url; else { const a = await ensureApp(dir, { log: () => {} }); url = a.url; started = !a.already; } }
+    if (url) (await import('./origin.js')).checkAppUrl(url, { allowRemote: remote(opt), what: 'The app address' });
+    if (!url) { const d = await detectApp(dir, undefined, { allowRemote: remote(opt) }); if (d.running) url = d.url; else { const a = await ensureApp(dir, { log: () => {}, allowRemote: remote(opt) }); url = a.url; started = !a.already; } }
     const { detectBrand, styleFromBrand, writeInlineLogo } = await import('./brand.js');
     let found;
     try { found = await detectBrand(dir, { url, path: pos[0] && /^https?:\/\//.test(pos[0]) ? new URL(pos[0]).pathname : '/' }); }

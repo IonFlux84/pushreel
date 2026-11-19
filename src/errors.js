@@ -118,6 +118,24 @@ export const E = {
     title: 'shotlist.json has problems', text: problems.map((p) => `- ${p}`).join('\n'),
     next: ['Fix the lines above, then: pushreel validate-shotlist'],
   }),
+  remoteUrl: (url, what = 'The address') => new PushreelError('remote_url', {
+    title: `${what} ${url} is not on this machine`,
+    text: `Pushreel opens only your app on this machine (localhost, 127.0.0.1, [::1], *.localhost, *.test). It did not contact ${url}. ` +
+      'To record a staging or production site on purpose, type the command yourself with --allow-remote. An agent never adds that flag on its own.',
+    next: ['Start your app locally and pass its address, e.g. pushreel run http://localhost:3000', 'Only if you mean it, type it yourself: pushreel run <address> --allow-remote'],
+  }),
+  offOrigin: (url, base, what = 'The address') => new PushreelError('remote_url', {
+    title: `${what} ${url} is not on your app`,
+    text: `Your app runs at ${base}. Pushreel opens only addresses of that app, so ${url} was not opened. Use a path like "/today" instead of a full address. ` +
+      'To open another host on purpose, type the command yourself with --allow-remote. An agent never adds that flag on its own.',
+    next: ['Use a path instead of the full address, then run the command again'],
+  }),
+  loginOffOrigin: (scene, at, base) => new PushreelError('login_failed', {
+    scene, title: `Scene ${scene}: the login page is on another host`,
+    text: `The page asking for the test account is on ${at}, and your app runs at ${base}. Pushreel types the email and password from PUSHREEL_LOGIN only into pages of your app, so nothing was typed. ` +
+      'For a login on another host (Google, GitHub, an SSO provider), sign in once by hand: "pushreel login" opens a browser window and keeps the session.',
+    next: ['pushreel login   (in Claude Code: /pushreel login), then: pushreel resume', `pushreel resume --skip ${scene}   (export without this scene)`, 'pushreel cancel'],
+  }),
   busy: (pid) => new PushreelError('busy', {
     title: 'A Pushreel run is already working in this project', text: `Process ${pid} is recording or cutting right now.`,
     next: ['pushreel status', 'Wait for it, or stop it in the Studio'],
