@@ -1,0 +1,10 @@
+Pushreel is a Claude Code plugin. It runs on the user's machine, records the user's web app with Playwright, cuts with ffmpeg, and serves a review UI ("Studio") on 127.0.0.1. Pay special attention to:
+
+1. Prompt injection from recorded pages: text from the app reaches the agent through the explore report. Check that page content stays marked as untrusted data, that skills/pushreel/SKILL.md allowed-tools stay narrow (Edit only inside ./.pushreel/), and that nothing lets page content trigger --allow-remote, file writes outside the project, or edits to package.json or project scripts.
+2. Address pinning (src/origin.js): scene URLs, baseUrl, explore-shot targets and login pages must stay on the app's origin unless the user typed --allow-remote. Watch for parser tricks (userinfo, IPv6, DNS names that look local).
+3. Credentials: PUSHREEL_LOGIN may only be typed on the app's origin and must never be written to disk or logs. auth.json, session.json, explore-session.json and ~/.pushreel/license.json must stay mode 0600, their folders 0700.
+4. Untrusted state files in .pushreel/ (app.json, run.json, address.json): no process signalling without pid > 1 and a matching start time, no paths outside the project or pushreel-out/, no HTML injection into the Studio.
+5. Studio server (src/studio/): binding to 127.0.0.1, Host and exact Origin checks, path traversal when serving files, no command execution reachable from requests.
+6. Child processes: ffmpeg, ffprobe and the project's dev command must be started with argument arrays; no user-controlled text in a shell string.
+7. Claude Code hooks (hooks/hooks.json, src/hook.js): they run on every Stop event; check input handling of the hook JSON and that they never send data anywhere.
+8. Network: the only outbound calls Pushreel makes itself are to Dodo Payments (fixed hosts) and Playwright's browser download. Flag any new outbound request, telemetry or update check.
