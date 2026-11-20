@@ -20,6 +20,9 @@ import { captionsMd } from '../cut.js';
 
 const PUBLIC = join(PLUGIN_ROOT, 'src', 'studio', 'public');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.png': 'image/png', '.jpg': 'image/jpeg', '.mp4': 'video/mp4', '.md': 'text/markdown; charset=utf-8', '.json': 'application/json', '.log': 'text/plain; charset=utf-8' };
+// The Studio pages load only their own files: no inline or foreign scripts, no foreign connections.
+// Style previews are srcdoc iframes and inherit this policy (inline styles, fonts and pictures from the Studio).
+const PAGE_CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 const PAGES = { '/': 'studio.html', '/studio': 'studio.html', '/style': 'style.html', '/result': 'result.html', '/recovery': 'recovery.html' };
 const TYPES_ASSET = { '.ttf': 'font/ttf', '.otf': 'font/otf' };
 /** The Style screen's pages are the renderer's own pages, with addresses this server answers. */
@@ -41,8 +44,32 @@ function styleState(dir, draft) {
   };
 }
 
+const STATUSES = ['waiting', 'recorded', 'failed', 'skipped', 'off', 'running', 'recording', 'stopped', 'done'];
+const RUN_STATUSES = ['recording', 'cutting', 'exporting', 'paused', 'done', 'cancelled', 'interrupted', 'failed', 'stopped', 'running'];
+const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+const int = (v) => (Number.isSafeInteger(v) ? v : 0);
+const str = (v) => (typeof v === 'string' ? v : '');
+/**
+ * run.json may come from a cloned repository, so the Studio page never gets its raw fields: numbers stay
+ * numbers, codes stay codes, file names are plain names. The page escapes text as well.
+ */
+export function cleanRun(run) {
+  if (!run || typeof run !== 'object' || Array.isArray(run)) return null;
+  const err = run.error && typeof run.error === 'object' ? run.error : null;
+  return {
+    ...run,
+    status: RUN_STATUSES.includes(run.status) ? run.status : 'interrupted',
+    id: str(run.id), startedAt: str(run.startedAt), finishedAt: str(run.finishedAt), baseUrl: str(run.baseUrl), outDir: str(run.outDir),
+    skip: Array.isArray(run.skip) ? run.skip.filter(Number.isSafeInteger) : [],
+    scenes: Array.isArray(run.scenes) ? run.scenes.filter((x) => x && typeof x === 'object').map((x) => ({ ...x, id: int(x.id), title: str(x.title), url: str(x.url), status: STATUSES.includes(x.status) ? x.status : 'waiting', duration: num(x.duration) ?? 0, rawSeconds: num(x.rawSeconds) })) : [],
+    error: err ? { ...err, code: /^[a-z_]{1,40}$/.test(err.code) ? err.code : 'unknown', title: str(err.title), text: str(err.text), at: str(err.at), sawUrl: str(err.sawUrl), screenshot: !!err.screenshot, scene: Number.isSafeInteger(err.scene) ? err.scene : null } : null,
+    elapsed: num(run.elapsed) ?? 0,
+    files: Array.isArray(run.files) ? run.files.filter((f) => f && /^[\w.-]{1,200}$/.test(f.name || '') && (f.kind !== 'video' || PLATFORM_KEYS.includes(f.target))).map((f) => ({ ...f, kind: str(f.kind), target: PLATFORM_KEYS.includes(f.target) ? f.target : undefined, note: str(f.note), seconds: num(f.seconds), bytes: num(f.bytes) ?? 0 })) : [],
+  };
+}
+
 export async function buildState(dir, { allowRemote = false } = {}) {
-  const p = paths(dir), raw = readJson(p.shotlist), run = readRun(dir), mine = appInfo(dir, { allowRemote }), app = mine && mine.ours ? mine : null;
+  const p = paths(dir), raw = readJson(p.shotlist), run = cleanRun(readRun(dir)), mine = appInfo(dir, { allowRemote }), app = mine && mine.ours ? mine : null;
   const state = { version: VERSION, project: { name: basename(dir), dir }, frame: FRAME, endCardSeconds: END_CARD_SECONDS, platforms: PLATFORMS, platformKeys: PLATFORM_KEYS, presetsChecked: LAST_CHECKED };
   state.licence = licenceStatus();
   state.shotlist = null; state.errors = []; state.warnings = []; state.stills = {}; state.recorded = {};
@@ -78,7 +105,7 @@ export async function buildState(dir, { allowRemote = false } = {}) {
   if (raw) { const pr = prepareShotlist(raw, dir); const st = pr.style.style; state.style = { line: styleLine(pr.style), errors: pr.style.errors, endSeconds: st.endCard ? st.endCard.duration : END_CARD_SECONDS, introSeconds: st.intro && st.intro.enabled ? st.intro.duration : 0, endCard: !!(st.endCard && st.endCard.enabled), look: st, template: pr.template.name }; if (pr.shotlist && state.shotlist) { state.shotlist.cut.zoom = pr.shotlist.cut.zoom; state.shotlist.cut.endCard = pr.shotlist.cut.endCard; } state.endCardSeconds = state.style.endSeconds; state.total = pr.shotlist ? totalSeconds(pr.shotlist, (run && run.status !== 'done' && run.skip) || []) : state.total; }
   state.loginSet = !!(process.env.PUSHREEL_LOGIN || readEnvFiles(dir).PUSHREEL_LOGIN) || existsSync(p.auth);
   state.outDir = run && safeOutDir(p, run.outDir) ? `./${run.outDir}/` : null;
-  state.files = run && run.status === 'done' && state.outDir && Array.isArray(run.files) ? run.files.map((f) => ({ ...f, src: `/media/out/${f.name}?v=${encodeURIComponent(run.finishedAt || '')}` })) : [];
+  state.files = run && run.status === 'done' && state.outDir && Array.isArray(run.files) ? run.files.map((f) => ({ ...f, src: `/media/out/${encodeURIComponent(f.name)}?v=${encodeURIComponent(run.finishedAt || '')}` })) : [];
   return state;
 }
 
@@ -145,7 +172,7 @@ export async function startStudio(dir, { port = 4317, entry = join(PLUGIN_ROOT, 
         if (!origin || !ORIGINS.includes(origin)) return send(res, 403, { error: 'Only the Studio page itself may change things: cross-site requests and requests without an Origin are refused.' });
         if (!/^application\/json/.test(req.headers['content-type'] || '')) return send(res, 415, { error: 'Send JSON.' });
       }
-      if (req.method === 'GET' && PAGES[path]) return sendFile(req, res, PUBLIC, PAGES[path]);
+      if (req.method === 'GET' && PAGES[path]) { res.setHeader('content-security-policy', PAGE_CSP); return sendFile(req, res, PUBLIC, PAGES[path]); }
       if (req.method === 'GET' && path === '/api/state') return send(res, 200, await st());
       if (req.method === 'GET' && path === '/api/events') {
         res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });

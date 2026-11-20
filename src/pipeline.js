@@ -1,6 +1,6 @@
 // The pipeline: record → cut → export. Fixed code, runs without any model, given a shotlist.json.
 // It keeps its state in .pushreel/run.json so that a run can pause at a failed scene and continue later.
-import { rmSync, existsSync, copyFileSync } from 'node:fs';
+import { rmSync, existsSync, copyFileSync, lstatSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { paths, readJson, writeJson, appendLine, ensureDir, ownsProcess, signalOwned, processStart, insideDir, today, clock, fmtSize, fmtDur, round, run as exec } from './util.js';
 import { loadShotlist, totalSeconds } from './shotlist.js';
@@ -29,6 +29,8 @@ export async function pipeline(dir, o = {}) {
   if (prev && ownsProcess(prev) && ['recording', 'cutting', 'exporting'].includes(prev.status)) throw E.busy(prev.pid);
   if (mode === 'resume' && !(prev && prev.status === 'paused')) throw E.nothingToResume();
   requireFfmpeg();
+  const linked = linkedFolders(p);
+  if (linked.length) throw E.linkedFolder(linked);
 
   if (o.shotlistFile && o.shotlistFile !== p.shotlist) { ensureDir(p.state); copyFileSync(o.shotlistFile, p.shotlist); }
   const { shotlist, warnings, info, style, template } = loadShotlist(p.shotlist, dir, { style: o.style, template: o.template, noProjectStyle: o.noProjectStyle, allowRemote: !!o.allowRemote });
@@ -226,9 +228,20 @@ export async function pipeline(dir, o = {}) {
  */
 export function safeOutDir(p, outDir) {
   if (typeof outDir !== 'string' || !outDir) return null;
+  if (linkedFolders(p).includes('pushreel-out')) return null;
   const abs = resolve(p.root, outDir);
   if (abs === resolve(p.outRoot) || !abs.startsWith(resolve(p.outRoot) + sep) || !insideDir(p.outRoot, abs)) return null;
   return abs;
+}
+/**
+ * The folders Pushreel writes into that are symbolic links (or lead outside the project): '.pushreel' and
+ * 'pushreel-out'. A cloned repository could ship them as links, and every write would land where they point.
+ */
+export function linkedFolders(p) {
+  return [['.pushreel', p.state], ['pushreel-out', p.outRoot]].filter(([, f]) => {
+    try { if (lstatSync(f).isSymbolicLink()) return true; } catch { return false; }
+    return !insideDir(p.root, f);
+  }).map(([name]) => name);
 }
 /** The output folder of a fresh run: pushreel-out/<date>-<slug>, with -2, -3 … when an earlier run already has that name. */
 export function freeOutDir(p, name, prev) {
