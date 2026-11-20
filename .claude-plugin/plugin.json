@@ -1,6 +1,6 @@
 {
   "name": "pushreel",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Records your running web app in 9:16 and exports a YouTube Short, an Instagram Reel and a TikTok in one run. Everything runs locally.",
   "author": { "name": "Pushreel", "email": "hello@pushreel.dev", "url": "https://pushreel.dev" },
   "homepage": "https://pushreel.dev",

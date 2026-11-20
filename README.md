@@ -141,6 +141,10 @@ marketplaces by itself, so get a new version in one of two ways:
 
 ## Commands
 
+You don't have to remember them. In Claude Code you can also ask in your own words, for example "record it
+again, the UI changed", "use the neon look" or "here is my licence key", and Claude runs the matching command.
+Only `--allow-remote` is never added for you: type it yourself.
+
 | Command | What it does | Uses the model |
 |---|---|---|
 | `/pushreel` | Explore, propose a shot list, ask, then record, cut, export | yes |
@@ -293,7 +297,7 @@ are written with mode 0600. Nothing is written into `~/.claude`. All of it stays
 - [docs/LICENSING.md](docs/LICENSING.md): Dodo Payments, what is sent and stored, the re-check
 - [docs/COSTS.md](docs/COSTS.md): how tokens are counted and what a run costs
 - [docs/example-shotlist.json](docs/example-shotlist.json): a complete shot list
-- [SECURITY.md](SECURITY.md): how to report a security problem, and what 0.6.1 fixed
+- [SECURITY.md](SECURITY.md): how to report a security problem, and what 0.6.1 and 0.6.2 fixed
 
 ## Support
 

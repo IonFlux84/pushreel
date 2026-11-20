@@ -140,6 +140,11 @@ export const E = {
     title: 'A Pushreel run is already working in this project', text: `Process ${pid} is recording or cutting right now.`,
     next: ['pushreel status', 'Wait for it, or stop it in the Studio'],
   }),
+  linkedFolder: (names) => new PushreelError('linked_folder', {
+    title: `${names.map((n) => `${n}/`).join(' and ')} ${names.length > 1 ? 'are links' : 'is a link'} to another folder`,
+    text: `Pushreel writes its state into .pushreel/ and the videos into pushreel-out/ of this project. ${names.length > 1 ? 'Here they are symbolic links' : 'Here it is a symbolic link'}, so every file would land wherever ${names.length > 1 ? 'they point' : 'it points'}. A cloned repository can ship such a link, so Pushreel stops. Nothing was recorded.`,
+    next: [`Look where it points: ls -l ${names.join(' ')}`, `If you did not make it yourself, remove the link (rm ${names.join(' ')}) and run again`],
+  }),
   nothingToResume: () => new PushreelError('nothing_to_resume', {
     title: 'There is no paused run', text: 'Resume continues a run that stopped at a scene. Nothing is paused in this project.',
     next: ['pushreel run', 'pushreel status'],

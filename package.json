@@ -1,6 +1,6 @@
 {
   "name": "pushreel",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "private": true,
   "description": "Pushreel: records your running web app in 9:16 and exports a YouTube Short, an Instagram Reel and a TikTok. Plugin for Claude Code.",
   "license": "SEE LICENSE IN LICENSE",

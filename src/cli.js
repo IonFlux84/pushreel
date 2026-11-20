@@ -119,6 +119,11 @@ let SELF = join(PLUGIN_ROOT, 'bin', 'pushreel');
 
 async function dispatch(cmd, pos, opt, dir) {
   const p = paths(dir);
+  // .pushreel/ or pushreel-out/ as a symbolic link (a cloned repository can ship one): stop before anything is written.
+  if (['begin', 'login', 'explore-shot', 'studio', 'run', 'record', 'resume', 'rerender'].includes(cmd)) {
+    const linked = (await import('./pipeline.js')).linkedFolders(p);
+    if (linked.length) throw E.linkedFolder(linked);
+  }
   switch (cmd) {
     case undefined: case 'help': case '--help': out(HELP); return 0;
     case 'version': out(VERSION); return 0;

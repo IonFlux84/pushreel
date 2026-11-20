@@ -295,7 +295,7 @@
         mountKey = key; video = null;
         if (vm) {
           var f = ST.files.filter(function (x) { return x.target === S.platform; })[0];
-          el.screen.innerHTML = '<video class="clip" muted playsinline preload="auto" src="' + f.src + '"></video>' + OVERLAYS;
+          el.screen.innerHTML = '<video class="clip" muted playsinline preload="auto" src="' + esc(f.src) + '"></video>' + OVERLAYS;
           video = $('video', el.screen);
         } else if (g.s) {
           var st = ST.stills[g.id];
@@ -545,7 +545,7 @@
       $('#done-title').textContent = 'Done in ' + dur(run.elapsed);
       $('#done-dir').textContent = ST.outDir;
       $('#done-files').innerHTML = ST.files.filter(function (f) { return f.kind !== 'shotlist' && f.kind !== 'log'; }).map(function (f) {
-        return '<li><b>' + esc(f.name) + '</b><span>' + (f.seconds ? f.seconds + ' s · ' : '') + size(f.bytes) + '</span></li>';
+        return '<li><b>' + esc(f.name) + '</b><span>' + (f.seconds ? esc(f.seconds) + ' s · ' : '') + size(f.bytes) + '</span></li>';
       }).join('');
       var c = ST.cost && ST.cost.measured ? ST.cost.total : null;
       $('#done-tok').textContent = c ? k(c.in) + ' in / ' + k(c.out) + ' out' : 'not measured';
@@ -764,10 +764,10 @@
     $('#vids').innerHTML = vids.map(function (f) {
       var p = f.target;
       return '<article class="vid" data-o="' + p + '"><div class="phone"><div class="screen" id="screen-' + p + '" data-platform="' + p + '">' +
-        '<video class="clip" src="' + f.src + '"' + (cover ? ' poster="' + cover.src + '"' : '') + ' muted playsinline loop preload="none" controls aria-label="' + P[p].name + ', ' + f.seconds + ' seconds"></video>' +
+        '<video class="clip" src="' + esc(f.src) + '"' + (cover ? ' poster="' + esc(cover.src) + '"' : '') + ' muted playsinline loop preload="none" controls aria-label="' + P[p].name + ', ' + esc(f.seconds) + ' seconds"></video>' +
         '<div class="safe" aria-hidden="true"><i class="t"></i><i class="b"></i><i class="r"></i><i class="l"></i><span class="t"></span><span class="b"></span></div></div></div>' +
         '<div class="vid-meta"><h3><span class="disc" data-o="' + p + '"></span>' + P[p].name + ' <span class="tag ok">Ready</span></h3><p class="f">' + esc(f.name) + '</p>' +
-        '<p class="m">' + f.seconds + ' s · ' + ST.frame.width + '×' + ST.frame.height + ' · ' + size(f.bytes) + '</p>' +
+        '<p class="m">' + esc(f.seconds) + ' s · ' + ST.frame.width + '×' + ST.frame.height + ' · ' + size(f.bytes) + '</p>' +
         '<p><button type="button" class="btn s" data-copy="' + esc(ST.project.dir + '/' + run.outDir + '/' + f.name) + '" aria-label="Copy path of ' + esc(f.name) + '">Copy path</button></p></div></article>';
     }).join('');
     var screens = vids.map(function (f) { return { p: f.target, sc: $('#screen-' + f.target) }; });
@@ -851,7 +851,7 @@
     var rec = run.scenes.filter(function (s) { return s.status === 'recorded'; }), inRun = run.scenes.filter(function (s) { return s.status !== 'off' && s.status !== 'skipped'; });
     var waiting = run.scenes.filter(function (s) { return s.status === 'waiting'; });
     var at = new Date(err.at).toLocaleTimeString(), isLogin = err.code === 'login_wall' || err.code === 'login_failed';
-    $('#al-slate').innerHTML = '<b>Run paused' + (failed ? ' at scene ' + failed.id : '') + '</b> · ' + new Date(err.at).toLocaleTimeString() + ' · ' + rec.length + ' of ' + inRun.length + ' recorded';
+    $('#al-slate').innerHTML = '<b>Run paused' + (failed ? ' at scene ' + esc(failed.id) : '') + '</b> · ' + new Date(err.at).toLocaleTimeString() + ' · ' + rec.length + ' of ' + inRun.length + ' recorded';
     $('#al-title').textContent = err.title;
     $('#al-text').textContent = err.text + ' ' + (rec.length ? 'Scene' + (rec.length > 1 ? 's ' : ' ') + list(rec.map(function (s) { return s.id; })) + (rec.length > 1 ? ' are' : ' is') + ' recorded and saved. Nothing is lost.' : 'Nothing is lost.');
     var appUp = ST.app.running;
@@ -861,25 +861,25 @@
     var tag = { recorded: '<span class="tag ok">Recorded</span>', waiting: '<span class="tag">Waiting</span>', skipped: '<span class="tag warn">Skipped</span>', off: '<span class="tag">Off</span>' };
     $('#sc-list').innerHTML = run.scenes.map(function (s) {
       var f = s.status === 'failed';
-      return '<li' + (f ? ' class="fail"' : '') + '><span class="n">' + String(s.id).padStart(2, '0') + '</span><span><b>' + esc(s.title) + '</b><small>' + esc(s.url) + (f && err.sawUrl && err.sawUrl !== s.url ? ' to ' + esc(err.sawUrl.split('?')[0]) : ' · ' + s.duration + ' s') + '</small></span>' +
+      return '<li' + (f ? ' class="fail"' : '') + '><span class="n">' + esc(String(s.id).padStart(2, '0')) + '</span><span><b>' + esc(s.title) + '</b><small>' + esc(s.url) + (f && err.sawUrl && err.sawUrl !== s.url ? ' to ' + esc(err.sawUrl.split('?')[0]) : ' · ' + esc(s.duration) + ' s') + '</small></span>' +
         (f ? '<span class="tag err">Failed: ' + esc(err.code.replace(/_/g, ' ')) + '</span>' : tag[s.status] || '') + '</li>';
     }).join('') + (SL && SL.cut.endCard ? '<li><span class="n">' + String(run.scenes.length + 1).padStart(2, '0') + '</span><span><b>End card</b><small>' + ST.endCardSeconds + ' s · added in the cut</small></span><span class="tag">Waiting</span></li>' : '');
     $('#tok-used').textContent = costLine(ST); $('#tok-model').textContent = modelName(ST) || 'fixed code';
     $('#tok-resume').textContent = 'Resume, ' + (failed ? 'scene' + (waiting.length ? 's ' : ' ') + list([failed.id].concat(waiting.map(function (s) { return s.id; }))) : 'remaining scenes');
     if (err.screenshot && failed) {
-      $('#fail-screen').insertAdjacentHTML('afterbegin', '<img alt="" src="/media/failed/scene-' + failed.id + '.png?v=' + encodeURIComponent(err.at) + '">');
+      $('#fail-screen').insertAdjacentHTML('afterbegin', '<img alt="" src="/media/failed/scene-' + encodeURIComponent(failed.id) + '.png?v=' + encodeURIComponent(err.at) + '">');
       $('#fail-cap').innerHTML = 'What the browser saw at ' + esc(at) + ' · ' + esc((err.sawUrl || '').split('?')[0]) + '<br>' + esc(err.screenshot);
     } else { $('.shot-frame').hidden = true; }
     $('#term-dir').textContent = ST.project.dir.replace(/^\/Users\/[^/]+/, '~');
     var skipIds = failed ? [failed.id].concat(waiting.filter(function (s) { var sc = SL.scenes.filter(function (x) { return x.id === s.id; })[0]; return isLogin && sc && sc.requiresLogin; }).map(function (s) { return s.id; })) : [];
     var skipCmd = 'pushreel resume --skip ' + skipIds.join(',');
     $('#term-body').innerHTML = '<div>' + run.scenes.filter(function (s) { return s.status === 'recorded' || s.status === 'failed'; }).map(function (s) {
-      return s.status === 'failed' ? '<div class="bad">✗ Scene ' + s.id + '  ' + esc(s.url) + '   stopped: ' + esc(err.code.replace(/_/g, ' ')) + '</div>' : '<div><span class="ok">✓</span> Scene ' + s.id + '  ' + esc(s.url) + '   ' + (s.rawSeconds ? s.rawSeconds.toFixed(1) + ' s' : '') + '</div>';
+      return s.status === 'failed' ? '<div class="bad">✗ Scene ' + esc(s.id) + '  ' + esc(s.url) + '   stopped: ' + esc(err.code.replace(/_/g, ' ')) + '</div>' : '<div><span class="ok">✓</span> Scene ' + esc(s.id) + '  ' + esc(s.url) + '   ' + (s.rawSeconds ? s.rawSeconds.toFixed(1) + ' s' : '') + '</div>';
     }).join('') + '</div><div><div class="dim">To continue:</div>' + (isLogin ? '<div class="w">/pushreel login</div><div class="dim">(or, for a password form: export PUSHREEL_LOGIN="email:password")</div>' : '') + '<div class="w">/pushreel resume</div></div>' +
       (skipIds.length ? '<div><div class="dim">Or export without ' + (skipIds.length > 1 ? 'those scenes' : 'that scene') + ':</div><div class="w">/pushreel resume --skip ' + skipIds.join(',') + '</div></div>' : '') +
       '<div><div class="dim">Or end this run' + (ST.app.startedByPushreel ? ' and stop the dev server' : '') + ':</div><div class="w">/pushreel cancel</div></div>';
-    $('#saved').innerHTML = rec.map(function (s) { return '<li><b>raw/scene-' + s.id + '.mp4</b><span>' + (s.rawSeconds ? s.rawSeconds.toFixed(1) + ' s' : 'recorded') + '</span></li>'; }).join('') +
-      (err.screenshot && failed ? '<li><b>failed/scene-' + failed.id + '.png</b><span>screenshot</span></li>' : '') + '<li><b>../shotlist.json</b><span>' + (SL ? SL.scenes.length : 0) + ' scenes</span></li><li><b>run.log</b><span>1 stop</span></li>';
+    $('#saved').innerHTML = rec.map(function (s) { return '<li><b>raw/scene-' + esc(s.id) + '.mp4</b><span>' + (s.rawSeconds ? s.rawSeconds.toFixed(1) + ' s' : 'recorded') + '</span></li>'; }).join('') +
+      (err.screenshot && failed ? '<li><b>failed/scene-' + esc(failed.id) + '.png</b><span>screenshot</span></li>' : '') + '<li><b>../shotlist.json</b><span>' + (SL ? SL.scenes.length : 0) + ' scenes</span></li><li><b>run.log</b><span>1 stop</span></li>';
 
     /* fix cards: A resume, B skip, C the 2FA limit (login failures only) */
     var btn = $('#resume'), st = $('#resume-status'), sk = $('#skip'), ss = $('#skip-status');

@@ -11,6 +11,16 @@ Pushreel runs on your machine only. It has no server of its own, sends nothing t
 internet only for the licence (Dodo Payments) and, when you agree, the one-time Chromium download. The README
 section "Data, network and privacy" lists every request, process and file.
 
+## Hardened in 0.6.2
+
+Anthropic's `/security-review` of 0.6.1 (20 November 2026) found no issue with high confidence. It noted two
+places to harden, both fixed in 0.6.2 with regression tests:
+
+| Note | Fixed in 0.6.2 |
+|---|---|
+| A planted `.pushreel/run.json` could put HTML into the Studio page (scene numbers, lengths, file names), and the Studio pages had no Content Security Policy | The Studio passes `run.json` to the page only as plain numbers, known codes and plain file names; the page escapes these fields as well; the Studio pages are served with `script-src 'self'` and `frame-ancestors 'none'` |
+| A cloned repository could ship `pushreel-out/` (or `.pushreel/`) as a symbolic link, so videos, `captions.md` and `shotlist.json` would land where the link points | Every command that writes into the project stops when `.pushreel/` or `pushreel-out/` is a link or leads outside the project, and says how to check it |
+
 ## Fixed in 0.6.1
 
 A review of 0.6.0 (19 November 2026) found four problems and a few places to harden. All are fixed in 0.6.1,

@@ -1,6 +1,6 @@
 ---
 name: pushreel
-description: Record the user's running web app in 9:16 and export a YouTube Short, an Instagram Reel and a TikTok with burned-in captions, a cover image and post texts. Use when the user types /pushreel or asks for a short vertical demo video, reel, short or TikTok of their app.
+description: Record the user's running web app in 9:16 and export a YouTube Short, an Instagram Reel and a TikTok with burned-in captions, a cover image and post texts. Use when the user types /pushreel or asks for a short vertical demo video, reel, short or TikTok of their app. Also use when the user asks, in their own words, to record the Pushreel video again, change its captions, scenes or look, sign in for a recording, continue or cancel a paused run, open the Pushreel Studio, or activate, check or move a Pushreel licence key.
 argument-hint: "[url] [--yes] [--style <name>] [--template <name>] | style init|list|show [name] | template list | login [url] | logout | resume [--skip 3,4] | cancel | rerender [--style <name>] | record | status | studio | setup | activate <key> | licence | deactivate | config"
 allowed-tools: Bash(pushreel *), Bash(pushreel), Read(./**), Edit(./.pushreel/**)
 ---
@@ -60,6 +60,33 @@ Look at the arguments first.
 | `style list`, `style show` (optional name), `style set …`, `template list`, `template show <name>` | Run the same `pushreel` command and show the answer. Stop. |
 | `rerender --style <name>` | Run `pushreel rerender --style <name>`. Go to step 5. |
 | empty, a URL, `--yes`, `--style <name>`, `--template <name>`, `--allow-remote` | The full flow below. A URL is the address of the running app. `--yes` skips the confirmation in step 3. |
+
+### Asked in plain words
+
+Most users never type a subcommand. When `$ARGUMENTS` is empty (or you were started because of a request
+in the chat), read what the user asked and pick the row below. Then follow the row of the table above with
+the same name, exactly as if the user had typed it.
+
+| The user says something like | Mode |
+|---|---|
+| "Here is my licence key …", or pastes a key | `activate <key>` |
+| "Is my licence active?", "Move Pushreel to my other Mac" | `licence`, or `deactivate` for moving |
+| "Check my setup", "Why does it not start?" | `doctor` |
+| "Download the recording browser" | `setup` |
+| "Record it again", "The UI changed, film it again" | `record` (same shot list, no exploring) |
+| "Change the caption of scene 2", "Leave out scene 3", "Make scene 1 shorter" | Edit `.pushreel/shotlist.json` (only those fields), run `pushreel validate-shotlist`, then `rerender` |
+| "Use the neon look", "Try another style" | `rerender --style <name>` (`style list` first when the name is unclear) |
+| "Use my brand colours", "Take my logo and font" | `style init` |
+| "My app needs a login", "Sign in first" | `login` |
+| "Go on", "Continue the run" (a run is paused) | `resume`; "skip scene 3" adds `--skip 3` |
+| "Stop", "Cancel the run" | `cancel` |
+| "Show me the result", "Open the Studio" | `studio` |
+| "Where are we?", "What happened?" | `status` |
+| "Make a video", "A new reel with other scenes", anything else | the full flow below |
+
+When two rows fit (for example "make it again" could mean the same shot list or new scenes), ask one short
+question and wait. Plain words never add a flag the user did not type: when the app runs on another
+machine, tell the user to type `/pushreel <address> --allow-remote` themselves (see "Addresses").
 
 **Addresses.** Pushreel opens only the user's app on this machine (`localhost`, `127.0.0.1`, `[::1]`,
 `*.localhost`, `*.test`), and every page of a run on the app's own origin; other hosts are refused. Only when
